@@ -1,0 +1,5 @@
+{
+  "name": "Elenchus Validator",
+  "description": "A meta-research tool for validating the Deutsch Probe by stress-testing explanations through variability attacks and reach analysis.",
+  "requestFramePermissions": []
+}
