@@ -1,5 +1,5 @@
 import React from 'react';
-import { Terminal, Copy, Check, ExternalLink, Code2, Cpu, Info } from 'lucide-react';
+import { Terminal, Copy, Check, ExternalLink, Code2, Cpu, Info, Zap } from 'lucide-react';
 import { useState } from 'react';
 
 export const DeveloperDocs: React.FC = () => {
@@ -21,6 +21,15 @@ export const DeveloperDocs: React.FC = () => {
   }
 }`;
 
+  const warmUp = async () => {
+    try {
+      await fetch('/api/health');
+      alert('Node warmed up successfully.');
+    } catch (e) {
+      alert('Failed to warm up node.');
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 relative overflow-hidden">
@@ -29,11 +38,20 @@ export const DeveloperDocs: React.FC = () => {
         </div>
         
         <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-500">
-              <Code2 size={24} />
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-500">
+                <Code2 size={24} />
+              </div>
+              <h2 className="text-2xl font-black text-zinc-100 tracking-tighter uppercase italic leading-none">Agentic Integration</h2>
             </div>
-            <h2 className="text-2xl font-black text-zinc-100 tracking-tighter uppercase italic">Agentic Integration</h2>
+            <button 
+              onClick={warmUp}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold uppercase tracking-widest shadow-lg shadow-emerald-900/20 transition-all active:scale-95"
+            >
+              <Zap size={14} />
+              Warm Up Node
+            </button>
           </div>
           
           <p className="text-zinc-400 max-w-2xl leading-relaxed mb-8">

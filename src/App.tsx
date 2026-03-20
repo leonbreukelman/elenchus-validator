@@ -61,6 +61,15 @@ export default function App() {
     setTestResult({ probe, attack });
   };
 
+  const warmUp = async () => {
+    try {
+      await fetch('/api/health');
+      alert('Node warmed up successfully.');
+    } catch (e) {
+      alert('Failed to warm up node.');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#050505] text-zinc-400 font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
       {/* Header */}
@@ -76,6 +85,14 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-6">
+          <button 
+            onClick={warmUp}
+            className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg text-[10px] font-bold uppercase tracking-widest text-zinc-400 hover:text-emerald-500 hover:border-emerald-500/50 transition-all"
+          >
+            <Zap size={12} />
+            Warm Up
+          </button>
+          
           <nav className="hidden md:flex items-center gap-1 bg-zinc-900/50 p-1 rounded-lg border border-zinc-800">
             <button 
               onClick={() => setActiveTab('validator')}
@@ -127,6 +144,16 @@ export default function App() {
             >
               {/* Left Column: Library */}
               <div className="lg:col-span-4 space-y-8">
+                <section className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex items-center gap-3">
+                  <div className="p-2 bg-emerald-500/20 rounded-lg text-emerald-500">
+                    <Zap size={16} />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest">MCP Node Ready</h4>
+                    <p className="text-[10px] text-emerald-500/70 leading-tight">If tools fail in Claude, click the Warm Up button in the header.</p>
+                  </div>
+                </section>
+
                 <section>
                   <TheoryLibrary 
                     theories={theories}
