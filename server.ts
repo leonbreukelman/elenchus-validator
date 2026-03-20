@@ -1,8 +1,6 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { createServer as createViteServer } from "vite";
-import path from "path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import {
@@ -10,6 +8,10 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { GoogleGenAI, Type } from "@google/genai";
+import {
+  executeSocraticGateway,
+  type InterceptionRequest,
+} from "./src/services/interceptor.js";
 
 // 1. Define MCP Server
 const mcpServer = new Server(
@@ -69,6 +71,32 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["theory"],
         },
       },
+      {
+        name: "intercept_action",
+        description: "Submit a proposed action for Socratic interception. The action is subjected to adversarial scrutiny: a saboteur generates a plausible alternative using the same reasoning, and a judge evaluates whether the original reasoning is 'hard to vary'. Returns ALLOW/DENY verdict with concordance score and full audit log.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            traceId: {
+              type: "string",
+              description: "Unique identifier from the calling agent swarm.",
+            },
+            context: {
+              type: "string",
+              description: "Environmental context: market state, system state, etc.",
+            },
+            proposedAction: {
+              type: "object",
+              description: "The action the agent wants to execute.",
+            },
+            reasoning: {
+              type: "string",
+              description: "The agent's stated justification for this action.",
+            },
+          },
+          required: ["traceId", "context", "proposedAction", "reasoning"],
+        },
+      },
     ],
   };
 });
@@ -93,12 +121,12 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "run_deutsch_probe") {
       const theory = args?.theory as string;
       console.log(`[MCP] Calling Gemini for Deutsch Probe: ${theory.substring(0, 50)}...`);
-      
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Evaluate this theory using David Deutsch's "Good Explanation" criteria:
         Theory: "${theory}"
-        
+
         Focus on:
         1. Variability: How hard is it to change the details while keeping the explanation?
         2. Reach: Does it explain more than it was designed to?
@@ -118,7 +146,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
         }
       });
-      
+
       console.log("[MCP] Gemini success for Deutsch Probe");
       return {
         content: [{ type: "text", text: response.text || "{}" }],
@@ -128,14 +156,14 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (name === "run_variability_attack") {
       const theory = args?.theory as string;
       console.log(`[MCP] Calling Gemini for Variability Attack: ${theory.substring(0, 50)}...`);
-      
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `You are an "Explanation Saboteur". Your goal is to prove that the following theory is "easy to vary".
-        
+
         Theory: "${theory}"
-        
-        Try to create 3 alternative explanations that account for the SAME phenomena but use completely different mechanisms. 
+
+        Try to create 3 alternative explanations that account for the SAME phenomena but use completely different mechanisms.
         If you can do this easily without losing explanatory power, the theory is "easy to vary" (Bad).
         If your alternatives feel forced, arbitrary, or "ad hoc", the theory is "hard to vary" (Good).`,
         config: {
@@ -151,17 +179,32 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
         }
       });
-      
+
       console.log("[MCP] Gemini success for Variability Attack");
       return {
         content: [{ type: "text", text: response.text || "{}" }],
       };
     }
+
+    if (name === "intercept_action") {
+      const interceptRequest: InterceptionRequest = {
+        traceId: args?.traceId as string,
+        context: args?.context as string,
+        proposedAction: args?.proposedAction as object,
+        reasoning: args?.reasoning as string,
+      };
+      console.log(`[MCP] Running Socratic Gateway for traceId: ${interceptRequest.traceId}`);
+      const result = await executeSocraticGateway(interceptRequest);
+      console.log(`[MCP] Socratic Gateway result: ${result.actionState} (concordance: ${result.concordanceScore})`);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+      };
+    }
   } catch (error: any) {
     console.error(`[MCP] Tool Execution Error (${name}):`, error);
-    
+
     let errorMessage = `Server Error executing ${name}: ${error instanceof Error ? error.message : String(error)}`;
-    
+
     // Check for specific API key errors
     if (error?.message?.includes("API key not valid") || error?.status === "INVALID_ARGUMENT") {
       errorMessage = "CRITICAL: The Gemini API Key provided in AI Studio Secrets is invalid. Please double-check your key at https://aistudio.google.com/app/apikey and update it in the app Settings -> Secrets.";
@@ -190,7 +233,7 @@ async function startServer() {
 
   app.get("/mcp/sse", async (req, res) => {
     console.log("[SSE] New connection request from", req.ip);
-    
+
     // Cloud Run / Nginx proxy compatibility: disable buffering
     res.setHeader('X-Accel-Buffering', 'no');
     res.setHeader('Content-Type', 'text/event-stream');
@@ -200,9 +243,9 @@ async function startServer() {
     const transport = new SSEServerTransport("/mcp/messages", res);
     const sessionId = transport.sessionId;
     transports.set(sessionId, transport);
-    
+
     console.log(`[SSE] Created session: ${sessionId}`);
-    
+
     try {
       await mcpServer.connect(transport);
       console.log(`[SSE] MCP Server connected to session ${sessionId}`);
@@ -211,7 +254,7 @@ async function startServer() {
       transports.delete(sessionId);
       return;
     }
-    
+
     req.on("close", () => {
       console.log(`[SSE] Session ${sessionId} closed`);
       transports.delete(sessionId);
@@ -221,7 +264,7 @@ async function startServer() {
   app.post("/mcp/messages", async (req, res) => {
     const sessionId = req.query.sessionId as string;
     console.log(`[MCP] POST message for session: ${sessionId}`);
-    
+
     const transport = transports.get(sessionId);
     if (transport) {
       try {
@@ -239,39 +282,74 @@ async function startServer() {
   });
 
   // --- API Endpoints ---
+
+  // Socratic Gateway interception endpoint
+  app.post("/api/v1/intercept", async (req, res) => {
+    const { traceId, context, proposedAction, reasoning } = req.body;
+
+    // Validate required fields
+    if (!traceId || typeof traceId !== "string") {
+      res.status(400).json({ error: "Missing or invalid 'traceId' (string required)" });
+      return;
+    }
+    if (!context || typeof context !== "string") {
+      res.status(400).json({ error: "Missing or invalid 'context' (string required)" });
+      return;
+    }
+    if (!proposedAction || typeof proposedAction !== "object") {
+      res.status(400).json({ error: "Missing or invalid 'proposedAction' (object required)" });
+      return;
+    }
+    if (!reasoning || typeof reasoning !== "string") {
+      res.status(400).json({ error: "Missing or invalid 'reasoning' (string required)" });
+      return;
+    }
+
+    try {
+      console.log(`[API] POST /api/v1/intercept | traceId=${traceId}`);
+      const result = await executeSocraticGateway({
+        traceId,
+        context,
+        proposedAction,
+        reasoning,
+      });
+      console.log(`[API] Intercept result: ${result.actionState} (concordance: ${result.concordanceScore})`);
+      res.json(result);
+    } catch (error: any) {
+      console.error(`[API] Intercept error for traceId=${traceId}:`, error);
+      res.status(500).json({
+        error: `Internal server error: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
+  });
+
   app.get("/api/health", (req, res) => {
     const key = getApiKey();
     const masked = key ? `${key.substring(0, 3)}...${key.substring(key.length - 3)}` : "MISSING";
-    res.json({ 
-      status: "ok", 
-      mcp: "active", 
-      env: { 
+    res.json({
+      status: "ok",
+      service: "elenchus-validator",
+      mode: "socratic-interception-proxy",
+      mcp: "active",
+      endpoints: {
+        intercept: "POST /api/v1/intercept",
+        mcpSse: "GET /mcp/sse",
+        mcpMessages: "POST /mcp/messages",
+      },
+      env: {
         hasApiKey: !!key,
         maskedKey: masked,
         keyLength: key?.length || 0,
-        nodeEnv: process.env.NODE_ENV 
-      } 
+        nodeEnv: process.env.NODE_ENV,
+      },
     });
   });
 
-  // --- Vite / Static Files ---
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
-
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[SERVER] Running on http://0.0.0.0:${PORT}`);
-    console.log(`[SERVER] MCP SSE: http://0.0.0.0:${PORT}/mcp/sse`);
+    console.log(`[SERVER] Elenchus Validator (Socratic Interception Proxy) running on http://0.0.0.0:${PORT}`);
+    console.log(`[SERVER] Intercept: POST http://0.0.0.0:${PORT}/api/v1/intercept`);
+    console.log(`[SERVER] Health:    GET  http://0.0.0.0:${PORT}/api/health`);
+    console.log(`[SERVER] MCP SSE:   GET  http://0.0.0.0:${PORT}/mcp/sse`);
   });
 }
 
