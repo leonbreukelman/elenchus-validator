@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "start:local": "tsx local-server.ts",
-    "start": "node server.ts",
+    "start": "tsx server.ts",
     "lint": "tsc --noEmit",
     "test": "vitest run"
   },
