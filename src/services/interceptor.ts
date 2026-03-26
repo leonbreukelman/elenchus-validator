@@ -30,8 +30,8 @@ export interface JudgeVerdict {
 // --- Constants ---
 
 const MAX_DEPTH = 2;
-const PER_CALL_TIMEOUT_MS = 5000;
-const GATEWAY_TIMEOUT_MS = 12000;
+const PER_CALL_TIMEOUT_MS = 30000;
+const GATEWAY_TIMEOUT_MS = 90000;
 const MODEL = "gemini-3-flash-preview";
 
 // --- Prompt Construction ---
