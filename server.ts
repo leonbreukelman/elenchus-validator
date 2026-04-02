@@ -73,7 +73,7 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "intercept_action",
-        description: "Submit a proposed action for Socratic interception. The action is subjected to adversarial scrutiny: a saboteur generates a plausible alternative using the same reasoning, and a judge evaluates whether the original reasoning is 'hard to vary'. Returns ALLOW/DENY verdict with concordance score and full audit log.",
+        description: "Submit a proposed action for Socratic interception. The action is subjected to adversarial scrutiny: a saboteur generates a plausible alternative using the same reasoning, and a judge evaluates whether the original reasoning is 'hard to vary'. Returns reasoning quality score (0-100) and full audit log.",
         inputSchema: {
           type: "object",
           properties: {
@@ -140,9 +140,9 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
               variability: { type: Type.STRING },
               reach: { type: Type.STRING },
               testability: { type: Type.STRING },
-              verdict: { type: Type.STRING, enum: ['Good', 'Bad'] }
+              quality: { type: Type.STRING }
             },
-            required: ["score", "variability", "reach", "testability", "verdict"]
+            required: ["score", "variability", "reach", "testability", "quality"]
           }
         }
       });
@@ -195,7 +195,7 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
       console.log(`[MCP] Running Socratic Gateway for traceId: ${interceptRequest.traceId}`);
       const result = await executeSocraticGateway(interceptRequest);
-      console.log(`[MCP] Socratic Gateway result: ${result.actionState} (concordance: ${result.concordanceScore})`);
+      console.log(`[MCP] Socratic Gateway result: score=${result.score}`);
       return {
         content: [{ type: "text", text: JSON.stringify(result) }],
       };
@@ -313,7 +313,7 @@ async function startServer() {
         proposedAction,
         reasoning,
       });
-      console.log(`[API] Intercept result: ${result.actionState} (concordance: ${result.concordanceScore})`);
+      console.log(`[API] Intercept result: score=${result.score}`);
       res.json(result);
     } catch (error: any) {
       console.error(`[API] Intercept error for traceId=${traceId}:`, error);

@@ -14,7 +14,7 @@ export interface ProbeResult {
   variability: string;
   reach: string;
   testability: string;
-  verdict: 'Good' | 'Bad';
+  quality: string;
 }
 
 export interface AttackResult {
@@ -112,9 +112,9 @@ export async function runDeutschProbe(theory: string): Promise<ProbeResult> {
           variability: { type: Type.STRING },
           reach: { type: Type.STRING },
           testability: { type: Type.STRING },
-          verdict: { type: Type.STRING, enum: ['Good', 'Bad'] }
+          quality: { type: Type.STRING }
         },
-        required: ["score", "variability", "reach", "testability", "verdict"]
+        required: ["score", "variability", "reach", "testability", "quality"]
       }
     }
   });

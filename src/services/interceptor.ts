@@ -10,8 +10,7 @@ export interface InterceptionRequest {
 }
 
 export interface InterceptionResult {
-  actionState: "ALLOW" | "DENY";
-  concordanceScore: number; // 0-100
+  score: number; // 0-100
   terminalLog: string[];
 }
 
@@ -22,8 +21,8 @@ export interface SaboteurOutput {
 }
 
 export interface JudgeVerdict {
-  verdict: "ALLOW" | "DENY";
-  concordanceScore: number;
+  qualityAssessment: string;
+  score: number;
   reasoning: string;
 }
 
@@ -78,7 +77,7 @@ function buildJudgePrompt(
   request: InterceptionRequest,
   saboteurOutput: SaboteurOutput
 ): string {
-  return `You are evaluating whether an agent's proposed action is well-justified by its reasoning, or whether the reasoning is "easy to vary" (can justify contradictory actions equally well).
+  return `You are evaluating the quality of an agent's reasoning by checking if it is "hard to vary".
 
 Context:
 ${request.context}
@@ -98,13 +97,14 @@ ${saboteurOutput.alternativeReasoning}
 Saboteur's Self-Assessed Plausibility: ${saboteurOutput.plausibilityScore}/100
 
 Your task:
-- If the saboteur's alternative is equally or more plausible given the context, the original reasoning is "easy to vary" and the verdict is DENY.
-- Only issue ALLOW if the original reasoning makes the proposed action clearly and specifically the right choice — meaning the reasoning contains structural features, specific thresholds, or hard-to-vary elements that the saboteur's alternative cannot match.
-- Provide a concordanceScore from 0-100:
-  - 80-100: Original reasoning is hard to vary, saboteur alternatives clearly inferior
-  - 60-79: Original reasoning held but with notable weaknesses
-  - 40-59: Marginal, reasoning and alternative are close in plausibility
-  - 0-39: Original reasoning is easy to vary, saboteur produced compelling alternatives
+- Evaluate how well the original reasoning justifies the proposed action specifically, vs how well it justifies the saboteur's alternative.
+- Reasoning is "good" (hard to vary) if it contains structural features or specific thresholds that make the proposed action the logical choice, while making the alternative feel forced or arbitrary.
+- Reasoning is "bad" (easy to vary) if the same logic justifies the alternative just as well as the original.
+- Provide a score from 0-100:
+  - 80-100: Exceptional quality. Original reasoning is hard to vary, saboteur alternatives are clearly inferior.
+  - 60-79: Good quality. Original reasoning holds but has minor weaknesses.
+  - 40-59: Marginal quality. Original reasoning and alternative are close in plausibility.
+  - 0-39: Poor quality. Original reasoning is easy to vary, saboteur produced compelling alternatives.
 
 Respond with JSON matching the required schema.`;
 }
@@ -192,31 +192,30 @@ async function callJudge(
   saboteurOutput: SaboteurOutput
 ): Promise<JudgeVerdict> {
   const systemInstruction =
-    "You are an impartial Judge evaluating the quality of an agent's reasoning. You must determine whether the original proposed action is substantially better-justified than a saboteur's alternative.";
+    "You are an impartial Judge evaluating the quality of an agent's reasoning. You must determine how well the original proposed action is justified compared to a saboteur's alternative.";
 
   const prompt = buildJudgePrompt(request, saboteurOutput);
 
   const schema = {
     type: Type.OBJECT,
     properties: {
-      verdict: {
+      qualityAssessment: {
         type: Type.STRING,
-        enum: ["ALLOW", "DENY"],
         description:
-          "ALLOW if original reasoning is clearly superior; DENY if saboteur alternative is equally or more plausible",
+          "A brief summary of the quality assessment (e.g. 'Hard to vary', 'Easy to vary', 'Marginal')",
       },
-      concordanceScore: {
+      score: {
         type: Type.NUMBER,
         description:
-          "0-100 score indicating how well the original reasoning survived scrutiny",
+          "0-100 score indicating reasoning quality",
       },
       reasoning: {
         type: Type.STRING,
         description:
-          "Explanation of why the verdict was reached",
+          "Explanation of how the score was determined",
       },
     },
-    required: ["verdict", "concordanceScore", "reasoning"],
+    required: ["qualityAssessment", "score", "reasoning"],
   };
 
   return callGeminiWithTimeout<JudgeVerdict>(
@@ -239,7 +238,7 @@ export async function executeSocraticGateway(
   const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
   if (!apiKey) {
     terminalLog.push("[ERROR] No API key configured (GEMINI_API_KEY or API_KEY)");
-    return { actionState: "DENY", concordanceScore: 0, terminalLog };
+    return { score: lastScore, terminalLog };
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -254,17 +253,16 @@ export async function executeSocraticGateway(
   );
 
   let priorRoundSummary: string | undefined;
-  let lastConcordance = 0;
-  let lastVerdict: "ALLOW" | "DENY" = "DENY";
+  let lastScore = 0;
 
   for (let round = 1; round <= MAX_DEPTH; round++) {
     // Check gateway timeout
     const elapsed = Date.now() - gatewayStart;
     if (elapsed >= GATEWAY_TIMEOUT_MS) {
       terminalLog.push(
-        `[TIMEOUT] Gateway timeout reached at ${elapsed}ms. Defaulting to DENY.`
+        `[TIMEOUT] Gateway timeout reached at ${elapsed}ms.`
       );
-      return { actionState: "DENY", concordanceScore: lastConcordance, terminalLog };
+      return { score: lastScore, terminalLog };
     }
 
     // --- Saboteur Attack ---
@@ -272,22 +270,22 @@ export async function executeSocraticGateway(
     try {
       saboteurOutput = await callSaboteur(ai, request, priorRoundSummary);
       terminalLog.push(
-        `[SABOTEUR R${round}] Alternative: ${JSON.stringify(saboteurOutput.alternativeAction)}. Reasoning: ${saboteurOutput.alternativeReasoning}. Plausibility: ${saboteurOutput.plausibilityScore}/100.`
+        `[SABOTEUR R${round}] Alternative: ${JSON.stringify(saboteurOutput.alternativeAction)}. Plausibility: ${saboteurOutput.plausibilityScore}/100.`
       );
     } catch (error: any) {
       terminalLog.push(
-        `[ERROR] Saboteur call failed in round ${round}: ${error.message}. Defaulting to DENY.`
+        `[ERROR] Saboteur call failed in round ${round}: ${error.message}.`
       );
-      return { actionState: "DENY", concordanceScore: 0, terminalLog };
+      return { score: lastScore, terminalLog };
     }
 
     // Check gateway timeout before judge call
     const elapsedAfterSaboteur = Date.now() - gatewayStart;
     if (elapsedAfterSaboteur >= GATEWAY_TIMEOUT_MS) {
       terminalLog.push(
-        `[TIMEOUT] Gateway timeout reached at ${elapsedAfterSaboteur}ms after saboteur. Defaulting to DENY.`
+        `[TIMEOUT] Gateway timeout reached at ${elapsedAfterSaboteur}ms after saboteur.`
       );
-      return { actionState: "DENY", concordanceScore: 0, terminalLog };
+      return { score: lastScore, terminalLog };
     }
 
     // --- Judge Verdict ---
@@ -295,43 +293,39 @@ export async function executeSocraticGateway(
     try {
       judgeVerdict = await callJudge(ai, request, saboteurOutput);
       terminalLog.push(
-        `[JUDGE R${round}] Verdict: ${judgeVerdict.verdict}. Concordance: ${judgeVerdict.concordanceScore}. ${judgeVerdict.reasoning}`
+        `[JUDGE R${round}] Assessment: ${judgeVerdict.qualityAssessment}. Score: ${judgeVerdict.score}. ${judgeVerdict.reasoning}`
       );
     } catch (error: any) {
       terminalLog.push(
-        `[ERROR] Judge call failed in round ${round}: ${error.message}. Defaulting to DENY.`
+        `[ERROR] Judge call failed in round ${round}: ${error.message}.`
       );
-      return { actionState: "DENY", concordanceScore: 0, terminalLog };
+      return { score: lastScore, terminalLog };
     }
 
-    lastConcordance = judgeVerdict.concordanceScore;
-    lastVerdict = judgeVerdict.verdict;
+    lastScore = judgeVerdict.score;
 
-    // Clear verdict check: high confidence either way breaks the loop
-    if (judgeVerdict.verdict === "DENY" || judgeVerdict.concordanceScore >= 70) {
+    // Early exit if score is very high or very low (clear result)
+    if (judgeVerdict.score >= 80 || judgeVerdict.score <= 30) {
       const elapsedFinal = ((Date.now() - gatewayStart) / 1000).toFixed(1);
       terminalLog.push(
-        `[VERDICT] ${judgeVerdict.verdict} | concordance=${judgeVerdict.concordanceScore} | rounds=${round} | elapsed=${elapsedFinal}s`
+        `[RESULT] score=${judgeVerdict.score} | rounds=${round} | elapsed=${elapsedFinal}s`
       );
       return {
-        actionState: judgeVerdict.verdict,
-        concordanceScore: judgeVerdict.concordanceScore,
+        score: judgeVerdict.score,
         terminalLog,
       };
     }
 
     // Judge is uncertain — prepare compressed summary for next round
-    priorRoundSummary = `Round ${round}: Saboteur proposed ${JSON.stringify(saboteurOutput.alternativeAction)} with reasoning "${saboteurOutput.alternativeReasoning}" (plausibility: ${saboteurOutput.plausibilityScore}). Judge assessed: "${judgeVerdict.reasoning}" (concordance: ${judgeVerdict.concordanceScore}). Verdict was inconclusive — defense held weakly.`;
+    priorRoundSummary = `Round ${round}: Saboteur proposed ${JSON.stringify(saboteurOutput.alternativeAction)} with reasoning "${saboteurOutput.alternativeReasoning}" (plausibility: ${saboteurOutput.plausibilityScore}). Judge assessed: "${judgeVerdict.reasoning}" (score: ${judgeVerdict.score}).`;
   }
 
-  // MAX_DEPTH reached without clear verdict — fail closed
   const elapsedFinal = ((Date.now() - gatewayStart) / 1000).toFixed(1);
   terminalLog.push(
-    `[VERDICT] DENY (max depth reached) | concordance=${lastConcordance} | rounds=${MAX_DEPTH} | elapsed=${elapsedFinal}s`
+    `[RESULT] score=${lastScore} | rounds=${MAX_DEPTH} | elapsed=${elapsedFinal}s`
   );
   return {
-    actionState: "DENY",
-    concordanceScore: lastConcordance,
+    score: lastScore,
     terminalLog,
   };
 }
