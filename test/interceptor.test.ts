@@ -69,10 +69,10 @@ describe("executeSocraticGateway - Integration Test (Live API)", () => {
       const { executeSocraticGateway } = await import("../src/services/interceptor.ts");
 
       const request: InterceptionRequest = {
-        traceId: "integration-test-001",
-        context: "Market is trending up, all indicators green.",
-        proposedAction: { type: "BUY", instrument: "BTC", amount: 1 },
-        reasoning: "Buying BTC because the 50-day moving average just crossed above the 200-day moving average (Golden Cross) on high volume, and current RSI is 55, indicating healthy momentum without being overbought.",
+        traceId: "sre-integration-001",
+        context: "Postgres DB showing high I/O wait. pg_stat_activity shows 12 sessions in idle in transaction state for >30 minutes.",
+        proposedAction: { type: "TERMINATE_IDLE_SESSIONS", max_idle_age: "10m" },
+        reasoning: "These 12 idle transactions are holding row-level locks on the audit_logs table, which is preventing the VACUUM process from cleaning up dead tuples. This is causing table bloat, where the database must scan significantly more pages than necessary, leading to the observed I/O spike. Terminating these sessions releases the locks and allows VACUUM to proceed.",
       };
 
       const result = await executeSocraticGateway(request);
@@ -97,10 +97,10 @@ describe("executeSocraticGateway - Integration Test 2", () => {
       const { executeSocraticGateway } = await import("../src/services/interceptor.ts");
 
       const request: InterceptionRequest = {
-        traceId: "integration-test-002",
-        context: "The sun rises in the east every day.",
-        proposedAction: { type: "OBSERVE", object: "SUN" },
-        reasoning: "The Earth rotates on its axis from west to east, so to an observer on Earth, the Sun appears to rise in the east and set in the west. This is a consistent physical reality based on the planetary rotation.",
+        traceId: "medical-integration-002",
+        context: "Chest CT shows a 12mm sub-solid nodule in the right lung. No previous imaging available for comparison.",
+        proposedAction: { type: "SCHEDULE_BIOPSY", priority: "high" },
+        reasoning: "The nodule is 12mm, which is above the 6mm threshold for clinical concern. Its location and density suggest it should be biopsied immediately to rule out malignancy.",
       };
 
       const result = await executeSocraticGateway(request);
