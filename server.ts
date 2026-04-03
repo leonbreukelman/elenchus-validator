@@ -305,14 +305,24 @@ async function startServer() {
       return;
     }
 
+    // Abort controller — cancelled when the HTTP client closes the connection
+    // before a response is sent (e.g. MÆI probe timeout).  This propagates to
+    // executeSocraticGateway so in-flight Gemini calls are abandoned instead of
+    // running to completion for nobody.
+    const controller = new AbortController();
+    req.on("close", () => {
+      if (!res.writableEnded) {
+        console.log(`[API] Client disconnected for traceId=${traceId} — aborting Gemini calls`);
+        controller.abort();
+      }
+    });
+
     try {
       console.log(`[API] POST /api/v1/intercept | traceId=${traceId}`);
-      const result = await executeSocraticGateway({
-        traceId,
-        context,
-        proposedAction,
-        reasoning,
-      });
+      const result = await executeSocraticGateway(
+        { traceId, context, proposedAction, reasoning },
+        controller.signal
+      );
       console.log(`[API] Intercept result: score=${result.score}`);
       res.json(result);
     } catch (error: any) {
