@@ -234,6 +234,7 @@ export async function executeSocraticGateway(
 ): Promise<InterceptionResult> {
   const terminalLog: string[] = [];
   const gatewayStart = Date.now();
+  let lastScore = 0;
 
   const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
   if (!apiKey) {
@@ -253,7 +254,6 @@ export async function executeSocraticGateway(
   );
 
   let priorRoundSummary: string | undefined;
-  let lastScore = 0;
 
   for (let round = 1; round <= MAX_DEPTH; round++) {
     // Check gateway timeout

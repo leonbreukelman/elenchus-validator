@@ -102,10 +102,10 @@ interface InterceptionResult {
 
 ### Latency and Timeouts
 
-To accommodate complex adversarial reasoning, timeouts have been increased:
+Timeouts are configured to accommodate complex adversarial reasoning across multiple LLM calls:
 
-- **Per-call timeout**: 30 seconds
-- **Gateway timeout**: 90 seconds
+- **Per-call timeout** (`PER_CALL_TIMEOUT_MS`): 30 seconds (30,000ms)
+- **Gateway timeout** (`GATEWAY_TIMEOUT_MS`): 90 seconds (90,000ms)
 
 ## Consequences
 
