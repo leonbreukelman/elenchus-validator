@@ -72,7 +72,7 @@ The proxy enforces a synchronous loop on every incoming interception request to 
 
 **Loop constraints:**
 
-- 'MAX_DEPTH = 2' iterations of Attack/Assessment.
+- `MAX_DEPTH` (2) iterations of Attack/Assessment.
 - Early exit on high-confidence results (score <= 30 or score >= 80).
 
 ### Interface Definitions
