@@ -111,3 +111,29 @@ describe("executeSocraticGateway - Integration Test 2", () => {
     }
   );
 });
+
+
+describe("Timeout constants - regression guard for issue #1", () => {
+  // Issue #1: probe client defaulted to the SDK's 25s timeout while the validator
+  // used 30s per-call and 90s gateway. This test ensures the exported constants
+  // stay aligned so callers (server.ts, validator.ts) can import rather than hardcode.
+  it("PER_CALL_TIMEOUT_MS is exported and set to 30s", async () => {
+    const { PER_CALL_TIMEOUT_MS } = await import("../src/services/interceptor.ts");
+    expect(PER_CALL_TIMEOUT_MS).toBe(30000);
+  });
+
+  it("GATEWAY_TIMEOUT_MS is exported and set to 90s", async () => {
+    const { GATEWAY_TIMEOUT_MS } = await import("../src/services/interceptor.ts");
+    expect(GATEWAY_TIMEOUT_MS).toBe(90000);
+  });
+
+  it("GATEWAY_TIMEOUT_MS gives headroom over the worst-case per-call spend", async () => {
+    // MAX_DEPTH=2 rounds x 2 calls each = 4 x PER_CALL_TIMEOUT_MS worst case.
+    // GATEWAY_TIMEOUT_MS must be less than 4 * PER_CALL_TIMEOUT_MS so the ceiling
+    // is actually reachable (i.e. it acts as a real bound, not dead code).
+    const { PER_CALL_TIMEOUT_MS, GATEWAY_TIMEOUT_MS } = await import("../src/services/interceptor.ts");
+    const MAX_DEPTH = 2;
+    const worstCaseMs = MAX_DEPTH * 2 * PER_CALL_TIMEOUT_MS;
+    expect(GATEWAY_TIMEOUT_MS).toBeLessThan(worstCaseMs);
+  });
+});
