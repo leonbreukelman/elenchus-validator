@@ -27,10 +27,21 @@ export interface JudgeVerdict {
 }
 
 // --- Constants ---
+//
+// Intent: All timeout values are exported so that callers (e.g. server.ts probe handlers)
+// can reference the same constants instead of relying on SDK defaults. This prevents
+// the "probe client (25s default) vs validator (30s/90s)" mismatch described in issue #1.
+//
+// PER_CALL_TIMEOUT_MS: budget for a single Gemini request (saboteur or judge).
+// GATEWAY_TIMEOUT_MS:  total wall-clock budget for the full multi-round gateway.
+//                      With MAX_DEPTH=2 rounds x 2 calls each, worst-case spend is
+//                      4 x PER_CALL_TIMEOUT_MS = 120 s, but GATEWAY_TIMEOUT_MS acts
+//                      as a hard ceiling so callers (e.g. HTTP clients) can rely on
+//                      a bounded response time.
 
 const MAX_DEPTH = 2;
-const PER_CALL_TIMEOUT_MS = 30000;
-const GATEWAY_TIMEOUT_MS = 90000;
+export const PER_CALL_TIMEOUT_MS = 30000;
+export const GATEWAY_TIMEOUT_MS = 90000;
 const MODEL = "gemini-3-flash-preview";
 
 // --- Prompt Construction ---
@@ -234,6 +245,10 @@ export async function executeSocraticGateway(
 ): Promise<InterceptionResult> {
   const terminalLog: string[] = [];
   const gatewayStart = Date.now();
+  // lastScore is declared here (before the early API-key return) so that the
+  // early-return path can reference it without a TypeScript block-scope error.
+  let lastScore = 0;
+  let priorRoundSummary: string | undefined;
 
   const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
   if (!apiKey) {
@@ -251,9 +266,6 @@ export async function executeSocraticGateway(
   terminalLog.push(
     `[RECEIVE] traceId=${request.traceId} | action=${actionSummary} | timestamp=${new Date().toISOString()}`
   );
-
-  let priorRoundSummary: string | undefined;
-  let lastScore = 0;
 
   for (let round = 1; round <= MAX_DEPTH; round++) {
     // Check gateway timeout

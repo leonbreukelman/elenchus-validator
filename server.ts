@@ -10,8 +10,23 @@ import {
 import { GoogleGenAI, Type } from "@google/genai";
 import {
   executeSocraticGateway,
+  PER_CALL_TIMEOUT_MS,
   type InterceptionRequest,
 } from "./src/services/interceptor.js";
+
+// wrapWithTimeout applies PER_CALL_TIMEOUT_MS to any Promise, matching the same
+// per-call budget used inside executeSocraticGateway. This ensures probe handlers
+// (run_deutsch_probe, run_variability_attack) time out at the same threshold as
+// the validator's internal Gemini calls, resolving the 25s-default vs 30s mismatch
+// described in issue #1.
+function wrapWithTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
 
 // 1. Define MCP Server
 const mcpServer = new Server(
@@ -122,30 +137,34 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       const theory = args?.theory as string;
       console.log(`[MCP] Calling Gemini for Deutsch Probe: ${theory.substring(0, 50)}...`);
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Evaluate this theory using David Deutsch's "Good Explanation" criteria:
-        Theory: "${theory}"
+      const response = await wrapWithTimeout(
+        ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: `Evaluate this theory using David Deutsch's "Good Explanation" criteria:
+          Theory: "${theory}"
 
-        Focus on:
-        1. Variability: How hard is it to change the details while keeping the explanation?
-        2. Reach: Does it explain more than it was designed to?
-        3. Testability: Is it falsifiable?`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              score: { type: Type.NUMBER },
-              variability: { type: Type.STRING },
-              reach: { type: Type.STRING },
-              testability: { type: Type.STRING },
-              quality: { type: Type.STRING }
-            },
-            required: ["score", "variability", "reach", "testability", "quality"]
+          Focus on:
+          1. Variability: How hard is it to change the details while keeping the explanation?
+          2. Reach: Does it explain more than it was designed to?
+          3. Testability: Is it falsifiable?`,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                score: { type: Type.NUMBER },
+                variability: { type: Type.STRING },
+                reach: { type: Type.STRING },
+                testability: { type: Type.STRING },
+                quality: { type: Type.STRING }
+              },
+              required: ["score", "variability", "reach", "testability", "quality"]
+            }
           }
-        }
-      });
+        }),
+        PER_CALL_TIMEOUT_MS,
+        "run_deutsch_probe"
+      );
 
       console.log("[MCP] Gemini success for Deutsch Probe");
       return {
@@ -157,28 +176,32 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
       const theory = args?.theory as string;
       console.log(`[MCP] Calling Gemini for Variability Attack: ${theory.substring(0, 50)}...`);
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `You are an "Explanation Saboteur". Your goal is to prove that the following theory is "easy to vary".
+      const response = await wrapWithTimeout(
+        ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: `You are an "Explanation Saboteur". Your goal is to prove that the following theory is "easy to vary".
 
-        Theory: "${theory}"
+          Theory: "${theory}"
 
-        Try to create 3 alternative explanations that account for the SAME phenomena but use completely different mechanisms.
-        If you can do this easily without losing explanatory power, the theory is "easy to vary" (Bad).
-        If your alternatives feel forced, arbitrary, or "ad hoc", the theory is "hard to vary" (Good).`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              success: { type: Type.BOOLEAN },
-              variations: { type: Type.ARRAY, items: { type: Type.STRING } },
-              explanation: { type: Type.STRING }
-            },
-            required: ["success", "variations", "explanation"]
+          Try to create 3 alternative explanations that account for the SAME phenomena but use completely different mechanisms.
+          If you can do this easily without losing explanatory power, the theory is "easy to vary" (Bad).
+          If your alternatives feel forced, arbitrary, or "ad hoc", the theory is "hard to vary" (Good).`,
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                success: { type: Type.BOOLEAN },
+                variations: { type: Type.ARRAY, items: { type: Type.STRING } },
+                explanation: { type: Type.STRING }
+              },
+              required: ["success", "variations", "explanation"]
+            }
           }
-        }
-      });
+        }),
+        PER_CALL_TIMEOUT_MS,
+        "run_variability_attack"
+      );
 
       console.log("[MCP] Gemini success for Variability Attack");
       return {
