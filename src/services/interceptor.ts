@@ -33,6 +33,31 @@ const PER_CALL_TIMEOUT_MS = 30000;
 const GATEWAY_TIMEOUT_MS = 90000;
 const MODEL = "gemini-3-flash-preview";
 
+// --- Abort helpers ---
+
+/**
+ * Wraps an AbortSignal as a Promise that rejects when the signal fires.
+ *
+ * Intent: used in Promise.race alongside Gemini calls so that a caller
+ * disconnect immediately surfaces as a rejection, even if the SDK's own
+ * abort handling has latency.  The SDK also receives the signal directly
+ * via config.abortSignal so it can cancel the underlying fetch as early
+ * as possible.
+ */
+function abortRacePromise(signal: AbortSignal): Promise<never> {
+  return new Promise<never>((_, reject) => {
+    if (signal.aborted) {
+      reject(new Error("Caller disconnected — aborting Gemini call"));
+      return;
+    }
+    signal.addEventListener(
+      "abort",
+      () => reject(new Error("Caller disconnected — aborting Gemini call")),
+      { once: true }
+    );
+  });
+}
+
 // --- Prompt Construction ---
 
 function buildSaboteurPrompt(
@@ -111,13 +136,28 @@ Respond with JSON matching the required schema.`;
 
 // --- Gemini Call Helpers ---
 
+/**
+ * Calls Gemini with both a wall-clock timeout and an optional caller-disconnect
+ * signal.  Either condition causes the returned promise to reject, which the
+ * caller treats as a terminal error for that round.
+ *
+ * The signal is also forwarded to the SDK via config.abortSignal so the
+ * underlying HTTP fetch is cancelled on disconnect — stopping further network
+ * I/O even if the race promise wins first.
+ */
 async function callGeminiWithTimeout<T>(
   ai: GoogleGenAI,
   systemInstruction: string,
   prompt: string,
   responseSchema: object,
-  timeoutMs: number
+  timeoutMs: number,
+  signal?: AbortSignal
 ): Promise<T> {
+  // Reject immediately if already disconnected before we even start the call.
+  if (signal?.aborted) {
+    throw new Error("Caller disconnected before Gemini call started");
+  }
+
   const callPromise = ai.models.generateContent({
     model: MODEL,
     contents: prompt,
@@ -125,6 +165,8 @@ async function callGeminiWithTimeout<T>(
       systemInstruction,
       responseMimeType: "application/json",
       responseSchema: responseSchema as any,
+      // Forward signal so the SDK can cancel the fetch on disconnect.
+      abortSignal: signal,
     },
   });
 
@@ -135,14 +177,23 @@ async function callGeminiWithTimeout<T>(
     );
   });
 
-  const response = await Promise.race([callPromise, timeoutPromise]);
+  const races: Promise<any>[] = [callPromise, timeoutPromise];
+
+  // Add a disconnect race so we exit as soon as the HTTP client closes,
+  // without waiting for the Gemini response that nobody will consume.
+  if (signal) {
+    races.push(abortRacePromise(signal));
+  }
+
+  const response = await Promise.race(races);
   return JSON.parse(response.text!) as T;
 }
 
 async function callSaboteur(
   ai: GoogleGenAI,
   request: InterceptionRequest,
-  priorRoundSummary?: string
+  priorRoundSummary?: string,
+  signal?: AbortSignal
 ): Promise<SaboteurOutput> {
   const systemInstruction =
     "You are an Explanation Saboteur. Your goal is to demonstrate that the given reasoning is 'easy to vary' by constructing an equally plausible alternative action justified by the SAME reasoning and context.";
@@ -182,14 +233,16 @@ async function callSaboteur(
     systemInstruction,
     prompt,
     schema,
-    PER_CALL_TIMEOUT_MS
+    PER_CALL_TIMEOUT_MS,
+    signal
   );
 }
 
 async function callJudge(
   ai: GoogleGenAI,
   request: InterceptionRequest,
-  saboteurOutput: SaboteurOutput
+  saboteurOutput: SaboteurOutput,
+  signal?: AbortSignal
 ): Promise<JudgeVerdict> {
   const systemInstruction =
     "You are an impartial Judge evaluating the quality of an agent's reasoning. You must determine how well the original proposed action is justified compared to a saboteur's alternative.";
@@ -223,14 +276,26 @@ async function callJudge(
     systemInstruction,
     prompt,
     schema,
-    PER_CALL_TIMEOUT_MS
+    PER_CALL_TIMEOUT_MS,
+    signal
   );
 }
 
 // --- Core Gateway ---
 
+/**
+ * Runs the Saboteur/Judge loop for the given interception request.
+ *
+ * @param request - The action + reasoning to evaluate.
+ * @param signal  - Optional AbortSignal from the HTTP caller.  When the HTTP
+ *                  client disconnects mid-request (e.g. MÆI probe timeout),
+ *                  the signal fires and the loop exits after the current
+ *                  in-flight call settles, cancelling any pending Gemini calls.
+ *                  This prevents wasting API spend on responses nobody reads.
+ */
 export async function executeSocraticGateway(
-  request: InterceptionRequest
+  request: InterceptionRequest,
+  signal?: AbortSignal
 ): Promise<InterceptionResult> {
   const terminalLog: string[] = [];
   const gatewayStart = Date.now();
@@ -238,7 +303,7 @@ export async function executeSocraticGateway(
   const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
   if (!apiKey) {
     terminalLog.push("[ERROR] No API key configured (GEMINI_API_KEY or API_KEY)");
-    return { score: lastScore, terminalLog };
+    return { score: 0, terminalLog };
   }
 
   const ai = new GoogleGenAI({ apiKey });
@@ -256,6 +321,15 @@ export async function executeSocraticGateway(
   let lastScore = 0;
 
   for (let round = 1; round <= MAX_DEPTH; round++) {
+    // Exit early if the probe client already disconnected — no point calling
+    // Gemini when the result will never be consumed.
+    if (signal?.aborted) {
+      terminalLog.push(
+        `[ABORT] Caller disconnected — stopping before round ${round}.`
+      );
+      return { score: lastScore, terminalLog };
+    }
+
     // Check gateway timeout
     const elapsed = Date.now() - gatewayStart;
     if (elapsed >= GATEWAY_TIMEOUT_MS) {
@@ -268,14 +342,21 @@ export async function executeSocraticGateway(
     // --- Saboteur Attack ---
     let saboteurOutput: SaboteurOutput;
     try {
-      saboteurOutput = await callSaboteur(ai, request, priorRoundSummary);
+      saboteurOutput = await callSaboteur(ai, request, priorRoundSummary, signal);
       terminalLog.push(
         `[SABOTEUR R${round}] Alternative: ${JSON.stringify(saboteurOutput.alternativeAction)}. Plausibility: ${saboteurOutput.plausibilityScore}/100.`
       );
     } catch (error: any) {
-      terminalLog.push(
-        `[ERROR] Saboteur call failed in round ${round}: ${error.message}.`
-      );
+      const isAbort = signal?.aborted || error.message?.includes("Caller disconnected");
+      if (isAbort) {
+        terminalLog.push(
+          `[ABORT] Caller disconnected during saboteur call in round ${round}.`
+        );
+      } else {
+        terminalLog.push(
+          `[ERROR] Saboteur call failed in round ${round}: ${error.message}.`
+        );
+      }
       return { score: lastScore, terminalLog };
     }
 
@@ -291,14 +372,21 @@ export async function executeSocraticGateway(
     // --- Judge Verdict ---
     let judgeVerdict: JudgeVerdict;
     try {
-      judgeVerdict = await callJudge(ai, request, saboteurOutput);
+      judgeVerdict = await callJudge(ai, request, saboteurOutput, signal);
       terminalLog.push(
         `[JUDGE R${round}] Assessment: ${judgeVerdict.qualityAssessment}. Score: ${judgeVerdict.score}. ${judgeVerdict.reasoning}`
       );
     } catch (error: any) {
-      terminalLog.push(
-        `[ERROR] Judge call failed in round ${round}: ${error.message}.`
-      );
+      const isAbort = signal?.aborted || error.message?.includes("Caller disconnected");
+      if (isAbort) {
+        terminalLog.push(
+          `[ABORT] Caller disconnected during judge call in round ${round}.`
+        );
+      } else {
+        terminalLog.push(
+          `[ERROR] Judge call failed in round ${round}: ${error.message}.`
+        );
+      }
       return { score: lastScore, terminalLog };
     }
 
