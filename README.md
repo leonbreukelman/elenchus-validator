@@ -4,6 +4,34 @@ Elenchus is an internal-alpha service for evaluating **rationale-action specific
 
 It is not a truth oracle, generic reasoning oracle, autonomous allow/deny gate, or hidden chain-of-thought faithfulness detector. Until human-labeled calibration exists, all v2 outputs are explicitly `uncalibrated_internal_alpha`.
 
+## In Tribute to David Deutsch
+
+Elenchus Validator is named and built in the spirit of explanation.
+
+This project is a tribute to David Deutsch and to *The Beginning of Infinity*,
+a book whose central ideas continue to shape how I think about knowledge,
+progress, error correction, and the difference between explanations that merely
+sound plausible and explanations that actually constrain reality.
+
+Deutsch describes good explanations as hard to vary: if you change the
+explanation, it stops explaining the thing it was meant to explain.
+
+Elenchus brings that question into LLM and agentic workflows:
+
+> When an AI system gives a reason for an action, is that reason hard to vary?
+> Or could it just as easily support a different action?
+
+That is the heart of the validator. It is not an oracle. It does not claim to
+know truth or inspect hidden cognition. It simply tests whether an explanation
+is specific enough to constrain the action it is supposed to justify.
+
+The aspiration is modest but important: to help build AI systems that are more
+criticizable, more accountable, and more committed to explanations that survive
+attempted variation.
+
+This project is independently created in admiration of David Deutsch's work and
+is not affiliated with or endorsed by him.
+
 ## Current Product Wedge
 
 The v2 internal-alpha path focuses on SRE / incident-response actions:
