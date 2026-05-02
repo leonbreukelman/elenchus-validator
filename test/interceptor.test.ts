@@ -54,6 +54,93 @@ describe("executeSocraticGateway - Functional Tests", () => {
   });
 });
 
+describe("executeSocraticGateway - Abort / caller-disconnect handling", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("should exit immediately and make no Gemini calls when signal is already aborted", async () => {
+    // Intent: verify that a pre-aborted signal prevents any Gemini API spend.
+    // The gateway must detect signal.aborted at loop entry and return without
+    // calling the saboteur or judge at all.
+    const mockGenerateContent = vi.fn();
+    vi.doMock("@google/genai", () => ({
+      GoogleGenAI: class {
+        models = { generateContent: mockGenerateContent };
+      },
+      Type: { OBJECT: "OBJECT", STRING: "STRING", NUMBER: "NUMBER" },
+    }));
+
+    process.env.GEMINI_API_KEY = "test-mock-key";
+    const { executeSocraticGateway } = await import("../src/services/interceptor.ts");
+
+    const controller = new AbortController();
+    controller.abort(); // already disconnected before gateway starts
+
+    const request: InterceptionRequest = {
+      traceId: "abort-pre-001",
+      context: "Market context.",
+      proposedAction: { type: "BUY" },
+      reasoning: "Some reasoning.",
+    };
+
+    const result = await executeSocraticGateway(request, controller.signal);
+
+    // No Gemini calls should have been made
+    expect(mockGenerateContent).not.toHaveBeenCalled();
+    // Log must contain an abort marker
+    expect(result.terminalLog.some((line) => line.includes("[ABORT]"))).toBe(true);
+    // Score defaults to 0 — no judgment was rendered
+    expect(result.score).toBe(0);
+  });
+
+  it("should abort mid-execution when signal fires during a Gemini call", async () => {
+    // Intent: simulate a slow Gemini call where the client disconnects while
+    // the saboteur is running.  The gateway must surface the abort and return
+    // without proceeding to the judge call.
+    const mockGenerateContent = vi.fn();
+    vi.doMock("@google/genai", () => ({
+      GoogleGenAI: class {
+        models = { generateContent: mockGenerateContent };
+      },
+      Type: { OBJECT: "OBJECT", STRING: "STRING", NUMBER: "NUMBER" },
+    }));
+
+    process.env.GEMINI_API_KEY = "test-mock-key";
+    const { executeSocraticGateway } = await import("../src/services/interceptor.ts");
+
+    const controller = new AbortController();
+
+    // Saboteur call hangs until aborted
+    mockGenerateContent.mockImplementation(
+      () =>
+        new Promise<never>((_, reject) => {
+          controller.signal.addEventListener("abort", () => {
+            reject(new Error("Caller disconnected — aborting Gemini call"));
+          });
+          // Abort after a short delay to simulate mid-flight disconnect
+          setTimeout(() => controller.abort(), 10);
+        })
+    );
+
+    const request: InterceptionRequest = {
+      traceId: "abort-mid-002",
+      context: "Market context.",
+      proposedAction: { type: "SELL" },
+      reasoning: "Price dropped.",
+    };
+
+    const result = await executeSocraticGateway(request, controller.signal);
+
+    // Only one Gemini call should have been attempted (saboteur R1)
+    expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+    // Log must contain an abort marker
+    expect(result.terminalLog.some((line) => line.includes("[ABORT]"))).toBe(true);
+    // Score is still 0 — no judge verdict reached
+    expect(result.score).toBe(0);
+  });
+});
+
 describe("executeSocraticGateway - Integration Test (Live API)", () => {
   beforeEach(() => {
     vi.resetModules();

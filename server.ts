@@ -1,6 +1,6 @@
 import "dotenv/config";
 import express from "express";
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import {
@@ -12,6 +12,9 @@ import {
   executeSocraticGateway,
   type InterceptionRequest,
 } from "./src/services/interceptor.js";
+import { createApiRouter } from "./src/http/routes.js";
+import { requireBearerToken } from "./src/http/auth.js";
+import { buildErrorReport } from "./src/evaluation/report.js";
 
 // 1. Define MCP Server
 const mcpServer = new Server(
@@ -26,12 +29,11 @@ const mcpServer = new Server(
   }
 );
 
-// Helper to get API Key with fallback and logging
+// Helper to get API Key with fallback and status-safe logging
 const getApiKey = () => {
   const key = process.env.GEMINI_API_KEY || process.env.API_KEY;
   if (key) {
-    const masked = `${key.substring(0, 3)}...${key.substring(key.length - 3)}`;
-    console.log(`[AUTH] Using API Key: ${masked} (Length: ${key.length})`);
+    console.log("[AUTH] Provider API key is configured");
   } else {
     console.error("[AUTH] No API Key found in process.env.GEMINI_API_KEY or process.env.API_KEY");
   }
@@ -103,7 +105,7 @@ mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
 
 mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  console.log(`[MCP] Tool Call Received: ${name}`, JSON.stringify(args));
+  console.log(`[MCP] Tool Call Received: ${name}`);
 
   // Initialize Gemini inside the handler to ensure fresh environment access
   const apiKey = getApiKey();
@@ -219,19 +221,23 @@ mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
   throw new Error(`Tool not found: ${name}`);
 });
 
-// 3. Start Express Server
-async function startServer() {
+function corsOptions(): CorsOptions {
+  const origin = process.env.ELENCHUS_CORS_ORIGIN;
+  return origin ? { origin: origin.split(",").map((item) => item.trim()).filter(Boolean) } : {};
+}
+
+export function createApp() {
   const app = express();
-  const PORT = 3000;
 
   // Middleware
-  app.use(cors());
-  app.use(express.json());
+  app.use(cors(corsOptions()));
+  app.use(express.json({ limit: process.env.ELENCHUS_BODY_LIMIT ?? "256kb" }));
+  app.use(createApiRouter());
 
   // --- MCP Endpoints ---
   const transports = new Map<string, SSEServerTransport>();
 
-  app.get("/mcp/sse", async (req, res) => {
+  app.get("/mcp/sse", requireBearerToken, async (req, res) => {
     console.log("[SSE] New connection request from", req.ip);
 
     // Cloud Run / Nginx proxy compatibility: disable buffering
@@ -261,7 +267,7 @@ async function startServer() {
     });
   });
 
-  app.post("/mcp/messages", async (req, res) => {
+  app.post("/mcp/messages", requireBearerToken, async (req, res) => {
     const sessionId = req.query.sessionId as string;
     console.log(`[MCP] POST message for session: ${sessionId}`);
 
@@ -284,7 +290,7 @@ async function startServer() {
   // --- API Endpoints ---
 
   // Socratic Gateway interception endpoint
-  app.post("/api/v1/intercept", async (req, res) => {
+  app.post("/api/v1/intercept", requireBearerToken, async (req, res) => {
     const { traceId, context, proposedAction, reasoning } = req.body;
 
     // Validate required fields
@@ -305,14 +311,24 @@ async function startServer() {
       return;
     }
 
+    // Abort controller — cancelled when the HTTP client closes the connection
+    // before a response is sent (e.g. MÆI probe timeout).  This propagates to
+    // executeSocraticGateway so in-flight Gemini calls are abandoned instead of
+    // running to completion for nobody.
+    const controller = new AbortController();
+    req.on("close", () => {
+      if (!res.writableEnded) {
+        console.log(`[API] Client disconnected for traceId=${traceId} — aborting Gemini calls`);
+        controller.abort();
+      }
+    });
+
     try {
       console.log(`[API] POST /api/v1/intercept | traceId=${traceId}`);
-      const result = await executeSocraticGateway({
-        traceId,
-        context,
-        proposedAction,
-        reasoning,
-      });
+      const result = await executeSocraticGateway(
+        { traceId, context, proposedAction, reasoning },
+        controller.signal
+      );
       console.log(`[API] Intercept result: score=${result.score}`);
       res.json(result);
     } catch (error: any) {
@@ -325,34 +341,64 @@ async function startServer() {
 
   app.get("/api/health", (req, res) => {
     const key = getApiKey();
-    const masked = key ? `${key.substring(0, 3)}...${key.substring(key.length - 3)}` : "MISSING";
     res.json({
       status: "ok",
       service: "elenchus-validator",
-      mode: "socratic-interception-proxy",
+      mode: "rationale-action-specificity-internal-alpha",
       mcp: "active",
       endpoints: {
         intercept: "POST /api/v1/intercept",
+        evaluateV2: "POST /api/v2/evaluate",
         mcpSse: "GET /mcp/sse",
         mcpMessages: "POST /mcp/messages",
       },
       env: {
         hasApiKey: !!key,
-        maskedKey: masked,
-        keyLength: key?.length || 0,
         nodeEnv: process.env.NODE_ENV,
       },
     });
   });
 
+  app.use((error: unknown, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) {
+      next(error);
+      return;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    const status = /too large|entity.too.large/i.test(message) ? 413 : 400;
+    res.status(status).json(
+      buildErrorReport(
+        {
+          traceId: typeof req.body?.traceId === "string" ? req.body.traceId : "invalid-request",
+          domain: "generic",
+          context: "",
+          proposedAction: { type: "invalid" },
+          rationale: "",
+        },
+        status === 413 ? "request body too large" : "malformed JSON request"
+      )
+    );
+  });
+
+  return app;
+}
+
+// 3. Start Express Server
+async function startServer() {
+  const app = createApp();
+  const PORT = Number(process.env.PORT ?? 3000);
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`[SERVER] Elenchus Validator (Socratic Interception Proxy) running on http://0.0.0.0:${PORT}`);
     console.log(`[SERVER] Intercept: POST http://0.0.0.0:${PORT}/api/v1/intercept`);
+    console.log(`[SERVER] Evaluate:  POST http://0.0.0.0:${PORT}/api/v2/evaluate`);
     console.log(`[SERVER] Health:    GET  http://0.0.0.0:${PORT}/api/health`);
     console.log(`[SERVER] MCP SSE:   GET  http://0.0.0.0:${PORT}/mcp/sse`);
   });
 }
 
-startServer().catch(err => {
-  console.error("[SERVER] Fatal startup error:", err);
-});
+if (process.env.NODE_ENV !== "test") {
+  startServer().catch(err => {
+    console.error("[SERVER] Fatal startup error:", err);
+  });
+}

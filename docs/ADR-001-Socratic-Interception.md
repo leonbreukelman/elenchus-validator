@@ -1,14 +1,16 @@
-# ADR-001: Reasoning Quality Interception Architecture
+# ADR-001: Rationale-Action Specificity Architecture
 
 ## Status
 
-Accepted (Updated 2026-04-02)
+Accepted (Updated 2026-05-01)
 
 ## Context
 
 The elenchus-validator system was originally designed as a binary "gate" to ALLOW or DENY agent actions. This approach proved too rigid for complex agent swarms that require nuanced quality signals rather than hard blockages.
 
 The system now functions as a **reasoning quality indicator**, providing a 0-100 score that quantifies how "hard to vary" an agent's reasoning is. This score enables calling swarms to make graduated decisions based on their own risk tolerance.
+
+As of v2, the product framing is narrower and more honest: Elenchus is an uncalibrated internal-alpha **rationale-action specificity** signal. It estimates whether a stated rationale specifically supports the proposed action over typed near-neighbor alternatives. It is not a truth oracle, generic reasoning oracle, autonomous allow/deny gate, or hidden chain-of-thought faithfulness detector.
 
 ## Decision
 
@@ -90,6 +92,20 @@ interface InterceptionResult {
   terminalLog: string[];
 }
 ```
+
+### V2 Interface
+
+`POST /api/v2/evaluate` preserves v1 compatibility while adding status-safe reports:
+
+- `status`: `complete`, `aborted`, `timeout`, `error`, or `skipped`
+- `overallSignal`: numeric only for complete evaluations, otherwise `null`
+- `recommendation`: advisory only
+- `calibration`: currently always `uncalibrated_internal_alpha`
+- `subscores`: rationale specificity, action coupling, alternative resistance, policy alignment
+- `support`: original support, strongest alternative support, and specificity margin
+- `providerMetadata`: separates deterministic/local and Gemini-backed scoring
+
+The first domain pack is SRE / incident response.
 
 **Score Interpretation:**
 
