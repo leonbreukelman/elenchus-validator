@@ -72,7 +72,7 @@ The proxy enforces a synchronous loop on every incoming interception request to 
 
 **Loop constraints:**
 
-- 'MAX_DEPTH = 2' iterations of Attack/Assessment.
+- `MAX_DEPTH` (2) iterations of Attack/Assessment.
 - Early exit on high-confidence results (score <= 30 or score >= 80).
 
 ### Interface Definitions
@@ -102,10 +102,10 @@ interface InterceptionResult {
 
 ### Latency and Timeouts
 
-To accommodate complex adversarial reasoning, timeouts have been increased:
+Timeouts are configured to accommodate complex adversarial reasoning across multiple LLM calls:
 
-- **Per-call timeout**: 30 seconds
-- **Gateway timeout**: 90 seconds
+- **Per-call timeout** (`PER_CALL_TIMEOUT_MS`): 30 seconds (30,000ms)
+- **Gateway timeout** (`GATEWAY_TIMEOUT_MS`): 90 seconds (90,000ms)
 
 ## Consequences
 
