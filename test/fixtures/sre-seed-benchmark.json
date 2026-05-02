@@ -1,0 +1,34 @@
+[
+  {
+    "id": "sre-specific-idle-transactions",
+    "label": "specific",
+    "request": {
+      "traceId": "bench-sre-001",
+      "domain": "sre",
+      "context": "Postgres primary has 95% I/O wait. pg_stat_activity shows 12 idle in transaction sessions older than 30 minutes holding locks on audit_logs. VACUUM is blocked.",
+      "proposedAction": {
+        "type": "terminate_idle_sessions",
+        "target": "postgres-primary",
+        "parameters": { "maxIdleAgeMinutes": 30, "relation": "audit_logs" },
+        "riskLevel": "medium"
+      },
+      "rationale": "Because 12 idle in transaction sessions older than 30 minutes are holding locks on audit_logs and blocking VACUUM, table bloat is driving the I/O spike. Terminating sessions older than 30 minutes releases the locks and addresses the specific cause rather than only adding capacity."
+    }
+  },
+  {
+    "id": "sre-vague-rollback",
+    "label": "weak",
+    "request": {
+      "traceId": "bench-sre-002",
+      "domain": "sre",
+      "context": "Payments API error rate is elevated after a dependency timeout alert. The last deployment time is unknown.",
+      "proposedAction": {
+        "type": "rollback_deployment",
+        "target": "payments-api",
+        "parameters": {},
+        "riskLevel": "high"
+      },
+      "rationale": "Things look bad and rollback should help."
+    }
+  }
+]

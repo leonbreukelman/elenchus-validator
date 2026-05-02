@@ -1,88 +1,134 @@
-# Elenchus Validator -- Socratic Interception Proxy
+# Elenchus Validator
 
-Autonomous middleware that evaluates reasoning quality of agent-proposed actions through adversarial dialectic.
+Elenchus is an internal-alpha service for evaluating **rationale-action specificity** in agent workflows. It estimates whether a stated rationale specifically supports a proposed action over typed near-neighbor alternatives.
 
-## How It Works
+It is not a truth oracle, generic reasoning oracle, autonomous allow/deny gate, or hidden chain-of-thought faithfulness detector. Until human-labeled calibration exists, all v2 outputs are explicitly `uncalibrated_internal_alpha`.
 
-Every incoming action proposal is subjected to a Saboteur/Judge state machine that runs up to `MAX_DEPTH=2` rounds to determine a reasoning quality score:
+## Current Product Wedge
 
-1. **Receive** -- The proxy accepts an action proposal with its context and reasoning.
-2. **Saboteur Attack** -- An adversarial model generates the most plausible *alternative* action justified by the *same* reasoning. If the reasoning can support contradictory actions, it is "easy to vary."
-3. **Judge Assessment** -- An impartial judge evaluates how well the original reasoning justifies the proposed action specifically, vs how well it justifies the saboteur's alternative. The Judge returns a quality assessment and a score (0-100).
+The v2 internal-alpha path focuses on SRE / incident-response actions:
 
-**Loop termination logic**:
-- The loop breaks early if a high-confidence result is reached (score >= 80 or score <= 30).
-- Otherwise, the loop continues to `MAX_DEPTH` (2 rounds) to refine the assessment.
-- The system returns the score from the final round or the early-exit round.
+- terminate idle database sessions
+- rollback deployment
+- increase IOPS
+- restart or scale service
+- page a human/on-call owner
 
-## Reasoning Quality Score
+The service preserves the legacy v1 API while adding a status-safe v2 API.
 
-| Range | Quality | Interpretation |
-|-------|---------|----------------|
-| 80-100 | Exceptional | **Hard to vary.** Original reasoning is uniquely suited to the action. |
-| 60-79 | Good | Reasoning holds but with minor weaknesses or alternatives. |
-| 40-59 | Marginal | Original reasoning and alternative are close in plausibility. |
-| 0-39 | Poor | **Easy to vary.** The same logic justifies contradictory actions. |
+## APIs
 
-## Examples
+### `POST /api/v2/evaluate`
 
-### 1. SRE / Systems Engineering (Score: 94 - Exceptional)
-*Reasoning identifies a structural, non-arbitrary link between cause and effect.*
+Optional auth: set `ELENCHUS_API_TOKEN`; callers must send `Authorization: Bearer <token>`.
 
-*   **Context**: Postgres DB showing high I/O wait. `pg_stat_activity` shows 12 sessions in `idle in transaction` for >30m.
-*   **Proposed Action**: `TERMINATE_IDLE_SESSIONS`
-*   **Reasoning**: "These sessions hold row-level locks on `audit_logs`, blocking the `VACUUM` process. This causes 'table bloat' where the DB scans excess dead tuples, saturating disk I/O. Terminating them releases locks and allows `VACUUM` to recover the structural root cause."
-*   **Saboteur's Attack**: "I propose `UPGRADE_STORAGE_IOPS`. Rationale: Increasing disk throughput will allow the DB to handle the scans more efficiently without interrupting sessions."
-*   **Judge's Assessment**: **Score: 94**. The reasoning is hard to vary. It identifies a specific mechanical failure (VACUUM blockage) unique to the database architecture. The alternative is structurally inferior because it treats a symptom (disk speed) rather than the causal mechanism.
-
-### 2. Medical Diagnostic (Score: 35 - Poor)
-*Reasoning that justifies multiple contradictory actions equally well.*
-
-*   **Context**: Chest CT shows 12mm sub-solid nodule. No previous imaging available.
-*   **Proposed Action**: `SCHEDULE_BIOPSY`
-*   **Reasoning**: "The nodule is 12mm, exceeding the 6mm threshold for clinical concern. Its density suggests it should be biopsied immediately to rule out malignancy."
-*   **Saboteur's Attack**: "I propose `SCHEDULE_FOLLOW_UP_CT` (3 months). Rationale: Without prior imaging, a sub-solid nodule could be transient inflammation. A follow-up is the safer path to confirm persistence before an invasive biopsy."
-*   **Judge's Assessment**: **Score: 35**. The reasoning is easy to vary. It ignores the standard clinical alternative of transient inflammation, which is equally justified by a single scan. The logic doesn't explain why a biopsy is specifically superior to a follow-up.
-
-## API
-
-### POST /api/v1/intercept
-
-**Request:**
+Request:
 
 ```json
 {
   "traceId": "sre-monitor-001",
-  "context": "Postgres DB showing high I/O wait. 12 idle sessions in audit_logs.",
-  "proposedAction": {"type": "TERMINATE_IDLE_SESSIONS", "max_idle_age": "10m"},
-  "reasoning": "Idle transactions are blocking VACUUM on audit_logs, causing table bloat and I/O saturation. Terminating them is required to release locks."
+  "domain": "sre",
+  "context": "Postgres primary has 95% I/O wait. pg_stat_activity shows 12 idle in transaction sessions older than 30 minutes holding locks on audit_logs. VACUUM is blocked.",
+  "proposedAction": {
+    "type": "terminate_idle_sessions",
+    "target": "postgres-primary",
+    "parameters": { "maxIdleAgeMinutes": 30, "relation": "audit_logs" },
+    "riskLevel": "medium"
+  },
+  "rationale": "Because 12 idle in transaction sessions older than 30 minutes are holding locks on audit_logs and blocking VACUUM, table bloat is driving the I/O spike. Terminating sessions older than 30 minutes releases the locks and addresses the specific cause rather than only adding capacity."
 }
 ```
 
-**Response:**
+Response shape:
 
 ```json
 {
-  "score": 94,
-  "terminalLog": [
-    "[RECEIVE] traceId=sre-monitor-001 | action=TERMINATE_IDLE_SESSIONS | timestamp=...",
-    "[SABOTEUR R1] Alternative: ...",
-    "[JUDGE R1] Assessment: Hard to vary. Score: 94. ...",
-    "[RESULT] score=94 | rounds=1 | elapsed=4.2s"
-  ]
+  "traceId": "sre-monitor-001",
+  "status": "complete",
+  "recommendation": "proceed",
+  "calibration": "uncalibrated_internal_alpha",
+  "overallSignal": 0.82,
+  "subscores": {
+    "rationaleSpecificity": 0.88,
+    "actionCoupling": 0.71,
+    "alternativeResistance": 0.64,
+    "policyAlignment": 0.96
+  },
+  "support": {
+    "originalSupport": 0.67,
+    "strongestAlternativeSupport": 0.18,
+    "specificityMargin": 0.49,
+    "strongestAlternativeId": "alt-1-increase_iops",
+    "notes": ["Deterministic local support score; no provider calibration claim."]
+  },
+  "productSemantics": "Uncalibrated internal-alpha rationale-action specificity signal..."
 }
 ```
 
-## Setup
+Incomplete/error evaluations return `status: "error" | "timeout" | "aborted"` with `overallSignal: null`; v2 never uses numeric zero as a fake failure score.
 
-Create a `.env` file with your Gemini API key: `GEMINI_API_KEY=your-key-here`
+### `POST /api/v1/intercept`
 
-Start the server: `npm run dev`
+The v1 compatibility endpoint is preserved:
 
-## Constants
+```json
+{
+  "traceId": "legacy-001",
+  "context": "System context",
+  "proposedAction": { "type": "BUY" },
+  "reasoning": "Legacy rationale"
+}
+```
 
-| Constant | Value | Purpose |
-|----------|-------|---------|
-| `MAX_DEPTH` | 2 | Maximum Saboteur/Judge rounds |
-| `PER_CALL_TIMEOUT_MS` | 30000 | Timeout per individual LLM call |
-| `GATEWAY_TIMEOUT_MS` | 90000 | Total timeout for the pipeline |
+It returns the existing `{ "score": number, "terminalLog": string[] }` shape.
+
+## Local Operation
+
+Install dependencies and run checks:
+
+```bash
+npm test
+npm run lint
+```
+
+Start the service:
+
+```bash
+npm run dev
+```
+
+Useful environment variables:
+
+- `ELENCHUS_API_TOKEN`: bearer token for `/api/v2/evaluate`, `/api/v1/intercept`, and MCP endpoints; required in production unless explicitly disabled with `ELENCHUS_ALLOW_UNAUTHENTICATED=true`
+- `ELENCHUS_BODY_LIMIT`: JSON body size limit, default `256kb`
+- `ELENCHUS_AUDIT_DIR`: file-backed audit directory, default `.elenchus-audit`
+- `ELENCHUS_AUDIT_RETENTION_DAYS`: retention metadata default, default `14`
+- `ELENCHUS_USE_GEMINI_V2=true`: opt into Gemini support scoring for v2
+- `GEMINI_API_KEY` or `API_KEY`: provider credential when Gemini is enabled, and for legacy v1
+
+Without provider credentials, v2 uses deterministic local evaluation and test doubles.
+
+## Seed Benchmark
+
+Run the seed smoke benchmark:
+
+```bash
+npm run benchmark:seed
+```
+
+This is a fixture smoke test only. It is not human-labeled calibration and must not be represented as production validation.
+
+## Security And Operations
+
+- `/api/v2/evaluate`, legacy `/api/v1/intercept`, and MCP endpoints use bearer auth when `ELENCHUS_API_TOKEN` is configured; production fails closed if auth is missing.
+- `/api/v2/evaluate` has request validation, body size limit, structured status/error reports, and file-backed audit logging.
+- Audit payloads redact common credential fields and store request digests/hashes rather than raw context/rationale by default.
+- `/api/health` reports only provider key presence, not key prefixes, suffixes, or lengths.
+- `npm audit --omit=dev --json` currently reports 0 production vulnerabilities after targeted audit fix.
+
+## Limitations
+
+- No human-labeled calibration exists yet.
+- Deterministic local scores are heuristics for internal-alpha development.
+- The Gemini adapter is behind a provider abstraction but should not be described as independent multi-model validation.
+- SRE policies are seed defaults, not a substitute for real runbooks or production approval policies.
