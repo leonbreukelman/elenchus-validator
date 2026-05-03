@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (Updated 2026-05-01)
+Accepted (Updated 2026-05-03)
 
 ## Context
 
@@ -96,16 +96,23 @@ interface InterceptionResult {
 ### V2 Interface
 
 `POST /api/v2/evaluate` preserves v1 compatibility while adding status-safe reports:
-
 - `status`: `complete`, `aborted`, `timeout`, `error`, or `skipped`
 - `overallSignal`: numeric only for complete evaluations, otherwise `null`
 - `recommendation`: advisory only
 - `calibration`: currently always `uncalibrated_internal_alpha`
-- `subscores`: rationale specificity, action coupling, alternative resistance, policy alignment
-- `support`: original support, strongest alternative support, and specificity margin
+- `subscores`: rationale specificity, action coupling, alternative resistance, policy alignment, and `contextGrounding`
+- `grounding`: deterministic supplied-context evidence-alignment assessment over extracted load-bearing anchors (`present`, `absent`, or `contradicted`)
+- `support`: original support, strongest alternative support, retained `specificityMargin`, and `marginReliability` metadata warning that margin is exploratory/internal-alpha rather than production evidence
 - `providerMetadata`: separates deterministic/local and Gemini-backed scoring
+- `readiness`: explicit advisory contract with `operatingMode: internal_alpha_advisory`, `productionDecisionUse: not_validated_for_allow_deny`, `operatorReviewRequired: true`, `reviewNeeded`, structured review reasons, blocked-use enums, evaluator version, and evaluator fingerprint
 
 The first domain pack is SRE / incident response.
+
+`contextGrounding` is a deterministic proxy over the supplied context only. It estimates whether load-bearing rationale claims have local textual support in that context; it is non-causal, non-authoritative, and cannot prove truth, hidden cognition faithfulness, action optimality, or production allow/deny safety. Operator review and domain judgment remain required.
+
+The `readiness` block is an internal-alpha advisory contract, not a calibrated abstention model. `reviewNeeded` is a hygiene signal for operator review queues. It does not make the report safe for autonomous control or machine-actionable production gating, and all complete reports continue to require operator review.
+
+The legacy `POST /api/v1/intercept` response remains a v1 score/log envelope and does not expose v2-only fields such as `grounding`, `subscores`, `overallSignal`, or `readiness`.
 
 **Score Interpretation:**
 

@@ -3,6 +3,7 @@ build/
 dist/
 coverage/
 .elenchus-audit/
+benchmark-output/
 .DS_Store
 *.log
 .env*

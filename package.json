@@ -8,7 +8,8 @@
     "start": "tsx server.ts",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "benchmark:seed": "node --import tsx src/evaluation/runSeedBenchmark.ts"
+    "benchmark:seed": "node --import tsx src/evaluation/runSeedBenchmark.ts",
+    "benchmark:sre": "node --import tsx src/evaluation/runSreBenchmark.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
