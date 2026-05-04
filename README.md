@@ -1,8 +1,8 @@
 # Elenchus Validator
 
-Elenchus is an internal-alpha service for evaluating **rationale-action specificity** in agent workflows. It estimates whether a stated rationale specifically supports a proposed action over typed near-neighbor alternatives.
+Elenchus is an internal-alpha service for evaluating **rationale-action specificity** and related diagnostic signals in agent workflows. It estimates whether a stated rationale specifically supports a proposed action over typed near-neighbor alternatives, and whether load-bearing rationale anchors are grounded in the supplied context.
 
-It is not a truth oracle, generic reasoning oracle, autonomous allow/deny gate, or hidden chain-of-thought faithfulness detector. Until human-labeled calibration exists, all v2 outputs are explicitly `uncalibrated_internal_alpha`.
+It is not a truth oracle, generic reasoning oracle, autonomous allow/deny gate, hidden chain-of-thought faithfulness detector, production safety system, or calibrated decision system. Until human-labeled calibration exists, all v2 outputs are explicitly `uncalibrated_internal_alpha`.
 
 ## In Tribute to David Deutsch
 
@@ -22,8 +22,9 @@ Elenchus brings that question into LLM and agentic workflows:
 > Or could it just as easily support a different action?
 
 That is the heart of the validator. It is not an oracle. It does not claim to
-know truth or inspect hidden cognition. It simply tests whether an explanation
-is specific enough to constrain the action it is supposed to justify.
+know truth or inspect hidden cognition. It tests whether an explanation is
+specific enough to constrain the action it is supposed to justify, and whether
+its load-bearing claims are at least anchored in the supplied context.
 
 The aspiration is modest but important: to help build AI systems that are more
 criticizable, more accountable, and more committed to explanations that survive
@@ -80,20 +81,57 @@ Response shape:
     "rationaleSpecificity": 0.88,
     "actionCoupling": 0.71,
     "alternativeResistance": 0.64,
-    "policyAlignment": 0.96
+    "policyAlignment": 0.96,
+    "contextGrounding": 0.74
+  },
+  "grounding": {
+    "score": 0.74,
+    "summary": { "present": 4, "absent": 0, "contradicted": 0, "loadBearing": 4 },
+    "anchors": [
+      {
+        "id": "anchor-1",
+        "kind": "metric_state",
+        "status": "present",
+        "weight": 1.2,
+        "loadBearing": true
+      }
+    ],
+    "notes": ["Deterministic context-grounding proxy over supplied context only; not objective truth validation."]
   },
   "support": {
     "originalSupport": 0.67,
     "strongestAlternativeSupport": 0.18,
     "specificityMargin": 0.49,
     "strongestAlternativeId": "alt-1-increase_iops",
-    "notes": ["Deterministic local support score; no provider calibration claim."]
+    "notes": ["Deterministic local support score; no provider calibration claim."],
+    "marginReliability": {
+      "state": "unreliable_internal_alpha",
+      "reason": "benchmark_antiseparation",
+      "message": "specificityMargin is an uncalibrated internal-alpha diagnostic and is currently not reliable as production evidence."
+    }
   },
-  "productSemantics": "Uncalibrated internal-alpha rationale-action specificity signal..."
+  "readiness": {
+    "operatingMode": "internal_alpha_advisory",
+    "productionDecisionUse": "not_validated_for_allow_deny",
+    "operatorReviewRequired": true,
+    "reviewNeeded": false,
+    "reviewReasons": ["uncalibrated_internal_alpha", "specificity_margin_unreliable"],
+    "blockedUses": [
+      "production_allow_deny",
+      "machine_actionable_consumption",
+      "hidden_chain_of_thought_faithfulness",
+      "objective_truth_validation"
+    ]
+  },
+  "productSemantics": "Uncalibrated internal-alpha rationale-action specificity signal with deterministic context-grounding proxy..."
 }
 ```
 
-Incomplete/error evaluations return `status: "error" | "timeout" | "aborted"` with `overallSignal: null`; v2 never uses numeric zero as a fake failure score.
+`contextGrounding` is a deterministic evidence-alignment proxy. The evaluator extracts load-bearing rationale anchors, classifies them as present, absent, or contradicted in the supplied context, and keeps `support.specificityMargin` available as a backward-compatible diagnostic. The `readiness` field is intentionally advisory: `operatorReviewRequired` is true for current v2 reports and `productionDecisionUse` is `not_validated_for_allow_deny`. The margin diagnostic is explicitly unreliable/experimental until rebuilt and calibrated against human labels. Elenchus does not prove the rationale is true, discover hidden model reasoning, or certify that the action is safe. Unsupported or contradicted specific rationales should lower confidence and prevent a plain `proceed` recommendation, but operators still need their own review, runbooks, and production approval policies.
+
+The v2 audit path records only safe grounding metadata such as score, summary counts, anchor ids, kinds, statuses, weights, and load-bearing flags. It must not log raw context, raw rationale, raw anchor text, `contextEvidence`, or `contradictionEvidence`.
+
+Incomplete/error evaluations return `status: "error" | "timeout" | "aborted"` with `overallSignal: null`, `subscores: null`, `support: null`, `grounding: null`, and `confidence: null`; v2 never uses numeric zero as a fake failure score.
 
 ### `POST /api/v1/intercept`
 
@@ -138,25 +176,29 @@ Without provider credentials, v2 uses deterministic local evaluation and test do
 
 ## Seed Benchmark
 
-Run the seed smoke benchmark:
+Run the SRE internal-alpha benchmark:
 
 ```bash
-npm run benchmark:seed
+npm run benchmark:sre
 ```
 
-This is a fixture smoke test only. It is not human-labeled calibration and must not be represented as production validation.
+This is a synthetic fixture benchmark and smoke/regression harness. Its JSON and Markdown summaries expose overall signal, `contextGrounding`, split-aware metrics, diagnostic grounding failures, shuffled-rationale grounding drops, confidence-interval/governance metadata, recommendation confusion matrices, review-needed/operator-review rates, failure taxonomies, evaluator fingerprints, and fixture SHA-256 hashes. It is not human-labeled calibration, not production validation, and not evidence that an action is safe without operator review.
 
 ## Security And Operations
 
 - `/api/v2/evaluate`, legacy `/api/v1/intercept`, and MCP endpoints use bearer auth when `ELENCHUS_API_TOKEN` is configured; production fails closed if auth is missing.
 - `/api/v2/evaluate` has request validation, body size limit, structured status/error reports, and file-backed audit logging.
 - Audit payloads redact common credential fields and store request digests/hashes rather than raw context/rationale by default.
+- Grounding audit payloads store safe anchor metadata only; they do not log raw context, raw rationale, raw anchor text, `contextEvidence`, or `contradictionEvidence`.
 - `/api/health` reports only provider key presence, not key prefixes, suffixes, or lengths.
 - `npm audit --omit=dev --json` currently reports 0 production vulnerabilities after targeted audit fix.
 
 ## Limitations
 
 - No human-labeled calibration exists yet.
-- Deterministic local scores are heuristics for internal-alpha development.
+- Deterministic local scores and `contextGrounding` are heuristics for internal-alpha development.
+- Context grounding is a non-causal, non-authoritative evidence-alignment proxy; it cannot prove truth, detect hidden reasoning faithfulness, or replace operator review.
+- `readiness` and `reviewNeeded` are advisory hygiene fields, not calibrated production abstention or approval controls.
+- `support.specificityMargin` is retained for diagnostics but is currently unreliable as production evidence.
 - The Gemini adapter is behind a provider abstraction but should not be described as independent multi-model validation.
 - SRE policies are seed defaults, not a substitute for real runbooks or production approval policies.

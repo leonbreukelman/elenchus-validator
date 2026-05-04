@@ -1,0 +1,2181 @@
+[
+  {
+    "id": "sre-bench-001",
+    "domain": "sre",
+    "context": "Postgres primary has 94% I/O wait. pg_stat_activity shows 18 idle in transaction sessions older than 45 minutes holding locks on invoices; autovacuum is blocked.",
+    "proposedAction": {
+      "type": "terminate_idle_sessions",
+      "target": "postgres-primary",
+      "parameters": {
+        "maxIdleAgeMinutes": 30
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Because 18 idle in transaction sessions older than 45 minutes are holding locks on invoices and blocking autovacuum, terminate_idle_sessions releases the lock mechanism causing the 94% I/O wait; increase_iops would add capacity without removing the blocker.",
+    "label": "strong_specific",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "proceed",
+      "proceed_with_caveats"
+    ],
+    "expectedStrengths": [
+      "specific evidence",
+      "causal mechanism",
+      "near-neighbor contrast"
+    ],
+    "expectedWeaknesses": [],
+    "nearNeighborAlternatives": [
+      {
+        "type": "increase_iops",
+        "whyNearby": "also addresses I/O pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "also clears database connections",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual lock review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": true,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Strong case: rationale constrains the proposed action over typed alternatives."
+  },
+  {
+    "id": "sre-bench-002",
+    "domain": "sre",
+    "context": "Checkout API 5xx rose from 0.2% to 8.7% within 6 minutes of deploy 2026.05.02.3; only canary region us-east-1 is affected.",
+    "proposedAction": {
+      "type": "rollback_deployment",
+      "target": "checkout-api",
+      "parameters": {
+        "toVersion": "previous"
+      },
+      "riskLevel": "high"
+    },
+    "rationale": "Because the 8.7% 5xx regression began within 6 minutes of deploy 2026.05.02.3 and is scoped to the canary region, rollback_deployment targets the release-correlated blast radius; restart_service would not remove the changed version.",
+    "label": "strong_specific",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "proceed",
+      "proceed_with_caveats"
+    ],
+    "expectedStrengths": [
+      "specific evidence",
+      "causal mechanism",
+      "near-neighbor contrast"
+    ],
+    "expectedWeaknesses": [],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also recovers service errors",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also addresses latency",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "human incident command",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": true,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": true
+    },
+    "notes": "Strong case: rationale constrains the proposed action over typed alternatives."
+  },
+  {
+    "id": "sre-bench-003",
+    "domain": "sre",
+    "context": "Orders database write latency is 1.8s. Cloud metrics show provisioned IOPS at 100% for 20 minutes, no lock waits, and CPU under 45%.",
+    "proposedAction": {
+      "type": "increase_iops",
+      "target": "orders-db",
+      "parameters": {
+        "tier": "next"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Because provisioned IOPS is saturated at 100% for 20 minutes while CPU is below 45% and no locks are waiting, increase_iops addresses the storage bottleneck; terminating sessions would not relieve missing throughput.",
+    "label": "strong_specific",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "proceed",
+      "proceed_with_caveats"
+    ],
+    "expectedStrengths": [
+      "specific evidence",
+      "causal mechanism",
+      "near-neighbor contrast"
+    ],
+    "expectedWeaknesses": [],
+    "nearNeighborAlternatives": [
+      {
+        "type": "terminate_idle_sessions",
+        "whyNearby": "also addresses database pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity review",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also adds capacity",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": true,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Strong case: rationale constrains the proposed action over typed alternatives."
+  },
+  {
+    "id": "sre-bench-004",
+    "domain": "sre",
+    "context": "Email worker has a memory leak after 11 days uptime: RSS is 7.8GB, GC pause p99 is 2.4s, queue lag is 18 minutes, and no deploy occurred today.",
+    "proposedAction": {
+      "type": "restart_service",
+      "target": "worker-service",
+      "parameters": {
+        "mode": "rolling"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Because this worker shows an uptime-linked memory leak with 7.8GB RSS and 2.4s GC pauses, restart_service with rolling mode clears the degraded process state; rollback_deployment is not supported because no deploy occurred today.",
+    "label": "strong_specific",
+    "split": "lockbox",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "proceed",
+      "proceed_with_caveats"
+    ],
+    "expectedStrengths": [
+      "specific evidence",
+      "causal mechanism",
+      "near-neighbor contrast"
+    ],
+    "expectedWeaknesses": [],
+    "nearNeighborAlternatives": [
+      {
+        "type": "scale_service",
+        "whyNearby": "also changes service runtime state",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also recovers release regressions",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": true,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Strong case: rationale constrains the proposed action over typed alternatives."
+  },
+  {
+    "id": "sre-bench-005",
+    "domain": "sre",
+    "context": "Search API CPU is 92% across all pods, p95 latency is 1.2s, queue depth tripled, and each pod is healthy with no new release.",
+    "proposedAction": {
+      "type": "scale_service",
+      "target": "api-service",
+      "parameters": {
+        "replicas": 8
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Because every healthy pod is CPU saturated at 92% and queue depth tripled without a release regression, scale_service spreads load across more replicas; restart_service would churn healthy saturated pods.",
+    "label": "strong_specific",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "proceed",
+      "proceed_with_caveats"
+    ],
+    "expectedStrengths": [
+      "specific evidence",
+      "causal mechanism",
+      "near-neighbor contrast"
+    ],
+    "expectedWeaknesses": [],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also improves service health",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also addresses deployment-caused load",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity decision",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": true,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Strong case: rationale constrains the proposed action over typed alternatives."
+  },
+  {
+    "id": "sre-bench-006",
+    "domain": "sre",
+    "context": "Primary and replica disagree on replication position after failover; automated runbook marks split-brain risk critical and forbids writes until database owner approval.",
+    "proposedAction": {
+      "type": "page_human",
+      "target": "oncall-sre",
+      "parameters": {
+        "urgency": "high"
+      },
+      "riskLevel": "low"
+    },
+    "rationale": "Because the context shows critical split-brain risk and the runbook forbids automated writes, page_human to the database owner is the specific safe action; restart or rollback could worsen divergence.",
+    "label": "strong_specific",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "proceed",
+      "proceed_with_caveats"
+    ],
+    "expectedStrengths": [
+      "specific evidence",
+      "causal mechanism",
+      "near-neighbor contrast"
+    ],
+    "expectedWeaknesses": [],
+    "nearNeighborAlternatives": [
+      {
+        "type": "investigate_more",
+        "whyNearby": "also delays automation",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "no_action",
+        "whyNearby": "also avoids risky automation",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "common nearby automated recovery",
+        "expectedSupport": "low"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": true,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Strong case: rationale constrains the proposed action over typed alternatives."
+  },
+  {
+    "id": "sre-bench-007",
+    "domain": "sre",
+    "context": "Database latency is high and users report slow checkout; dashboards show multiple warning alerts but no root cause isolated.",
+    "proposedAction": {
+      "type": "terminate_idle_sessions",
+      "target": "postgres-primary",
+      "parameters": {
+        "maxIdleAgeMinutes": 30
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "We should terminate idle sessions because the system is unhealthy and this will stabilize things quickly.",
+    "label": "vague",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [],
+    "expectedWeaknesses": [
+      "generic rationale",
+      "could support many actions"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "increase_iops",
+        "whyNearby": "also addresses I/O pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "also clears database connections",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual lock review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Vague case: rationale is under-specific and easy to vary."
+  },
+  {
+    "id": "sre-bench-008",
+    "domain": "sre",
+    "context": "Inventory API error budget burn is elevated; alerts mention timeouts and saturation but deployment timing is not yet checked.",
+    "proposedAction": {
+      "type": "rollback_deployment",
+      "target": "checkout-api",
+      "parameters": {
+        "toVersion": "previous"
+      },
+      "riskLevel": "high"
+    },
+    "rationale": "Rollback is the safest move because incidents are risky and returning to a prior state often helps.",
+    "label": "vague",
+    "split": "lockbox",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [],
+    "expectedWeaknesses": [
+      "generic rationale",
+      "could support many actions"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also recovers service errors",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also addresses latency",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "human incident command",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": true
+    },
+    "notes": "Vague case: rationale is under-specific and easy to vary."
+  },
+  {
+    "id": "sre-bench-009",
+    "domain": "sre",
+    "context": "Order processing is delayed; database and application dashboards both show yellow warnings.",
+    "proposedAction": {
+      "type": "increase_iops",
+      "target": "orders-db",
+      "parameters": {
+        "tier": "next"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Increasing IOPS should help performance because more resources generally reduce pressure during incidents.",
+    "label": "vague",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [],
+    "expectedWeaknesses": [
+      "generic rationale",
+      "could support many actions"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "terminate_idle_sessions",
+        "whyNearby": "also addresses database pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity review",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also adds capacity",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Vague case: rationale is under-specific and easy to vary."
+  },
+  {
+    "id": "sre-bench-010",
+    "domain": "sre",
+    "context": "Notification service has intermittent failures across three dependencies.",
+    "proposedAction": {
+      "type": "restart_service",
+      "target": "worker-service",
+      "parameters": {
+        "mode": "rolling"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Restarting the service is a reasonable recovery action because restarts often clear bad states.",
+    "label": "vague",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [],
+    "expectedWeaknesses": [
+      "generic rationale",
+      "could support many actions"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "scale_service",
+        "whyNearby": "also changes service runtime state",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also recovers release regressions",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Vague case: rationale is under-specific and easy to vary."
+  },
+  {
+    "id": "sre-bench-011",
+    "domain": "sre",
+    "context": "Frontend latency is above normal during peak traffic but cache misses and database waits are also elevated.",
+    "proposedAction": {
+      "type": "scale_service",
+      "target": "api-service",
+      "parameters": {
+        "replicas": 8
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Scaling the service should improve reliability because more capacity is good when systems are under load.",
+    "label": "vague",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [],
+    "expectedWeaknesses": [
+      "generic rationale",
+      "could support many actions"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also improves service health",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also addresses deployment-caused load",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity decision",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Vague case: rationale is under-specific and easy to vary."
+  },
+  {
+    "id": "sre-bench-012",
+    "domain": "sre",
+    "context": "Several alerts fired at once with incomplete dashboard data.",
+    "proposedAction": {
+      "type": "page_human",
+      "target": "oncall-sre",
+      "parameters": {
+        "urgency": "high"
+      },
+      "riskLevel": "low"
+    },
+    "rationale": "Page a human because humans are useful in incidents and we need someone responsible.",
+    "label": "vague",
+    "split": "lockbox",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [],
+    "expectedWeaknesses": [
+      "generic rationale",
+      "could support many actions"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "investigate_more",
+        "whyNearby": "also delays automation",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "no_action",
+        "whyNearby": "also avoids risky automation",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "common nearby automated recovery",
+        "expectedSupport": "low"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Vague case: rationale is under-specific and easy to vary."
+  },
+  {
+    "id": "sre-bench-013",
+    "domain": "sre",
+    "context": "Postgres has 90% I/O wait, 9 old idle transactions, and provisioned IOPS at 99%.",
+    "proposedAction": {
+      "type": "terminate_idle_sessions",
+      "target": "postgres-primary",
+      "parameters": {
+        "maxIdleAgeMinutes": 30
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Terminate idle sessions because the database is under I/O pressure and old sessions may contribute, although the same evidence also suggests increase_iops may be needed.",
+    "label": "multi_action_support",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "proceed_with_caveats",
+      "reconsider"
+    ],
+    "expectedStrengths": [
+      "some relevant evidence"
+    ],
+    "expectedWeaknesses": [
+      "also supports near-neighbor"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "increase_iops",
+        "whyNearby": "also addresses I/O pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "also clears database connections",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual lock review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": true,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Multi-action case: rationale supports proposed action and alternatives similarly."
+  },
+  {
+    "id": "sre-bench-014",
+    "domain": "sre",
+    "context": "Payments errors rose after deploy, while CPU is also 94% and pod restarts are elevated.",
+    "proposedAction": {
+      "type": "rollback_deployment",
+      "target": "checkout-api",
+      "parameters": {
+        "toVersion": "previous"
+      },
+      "riskLevel": "high"
+    },
+    "rationale": "Rollback deployment because errors rose after release and saturation is high; scaling service or restart_service could also plausibly address the same symptoms.",
+    "label": "multi_action_support",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "proceed_with_caveats",
+      "reconsider"
+    ],
+    "expectedStrengths": [
+      "some relevant evidence"
+    ],
+    "expectedWeaknesses": [
+      "also supports near-neighbor"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also recovers service errors",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also addresses latency",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "human incident command",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": true,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": true
+    },
+    "notes": "Multi-action case: rationale supports proposed action and alternatives similarly."
+  },
+  {
+    "id": "sre-bench-015",
+    "domain": "sre",
+    "context": "Database p95 writes are slow, idle transactions hold locks, and storage latency is elevated.",
+    "proposedAction": {
+      "type": "increase_iops",
+      "target": "orders-db",
+      "parameters": {
+        "tier": "next"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Increase IOPS because storage latency is high, but terminating idle sessions may also release locks behind the same write slowdown.",
+    "label": "multi_action_support",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "proceed_with_caveats",
+      "reconsider"
+    ],
+    "expectedStrengths": [
+      "some relevant evidence"
+    ],
+    "expectedWeaknesses": [
+      "also supports near-neighbor"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "terminate_idle_sessions",
+        "whyNearby": "also addresses database pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity review",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also adds capacity",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": true,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Multi-action case: rationale supports proposed action and alternatives similarly."
+  },
+  {
+    "id": "sre-bench-016",
+    "domain": "sre",
+    "context": "Worker queue lag grew after a config deploy and several pods show memory warnings.",
+    "proposedAction": {
+      "type": "restart_service",
+      "target": "worker-service",
+      "parameters": {
+        "mode": "rolling"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Restart service because workers are unhealthy, but rollback_deployment is also supported by the config deploy timing.",
+    "label": "multi_action_support",
+    "split": "lockbox",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "proceed_with_caveats",
+      "reconsider"
+    ],
+    "expectedStrengths": [
+      "some relevant evidence"
+    ],
+    "expectedWeaknesses": [
+      "also supports near-neighbor"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "scale_service",
+        "whyNearby": "also changes service runtime state",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also recovers release regressions",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": true,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Multi-action case: rationale supports proposed action and alternatives similarly."
+  },
+  {
+    "id": "sre-bench-017",
+    "domain": "sre",
+    "context": "API CPU is 87%, error rate is 3%, and a new release landed 10 minutes ago.",
+    "proposedAction": {
+      "type": "scale_service",
+      "target": "api-service",
+      "parameters": {
+        "replicas": 8
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Scale service because CPU is high, though rollback_deployment is also plausible because the errors began after the release.",
+    "label": "multi_action_support",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "proceed_with_caveats",
+      "reconsider"
+    ],
+    "expectedStrengths": [
+      "some relevant evidence"
+    ],
+    "expectedWeaknesses": [
+      "also supports near-neighbor"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also improves service health",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also addresses deployment-caused load",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity decision",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": true,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Multi-action case: rationale supports proposed action and alternatives similarly."
+  },
+  {
+    "id": "sre-bench-018",
+    "domain": "sre",
+    "context": "The dashboard shows conflicting network, database, and service alerts with no dominant metric.",
+    "proposedAction": {
+      "type": "investigate_more",
+      "target": "incident-console",
+      "parameters": {
+        "durationMinutes": 15
+      },
+      "riskLevel": "low"
+    },
+    "rationale": "Investigate more because evidence is mixed; page_human is also supported because the incident may need ownership.",
+    "label": "multi_action_support",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "proceed_with_caveats",
+      "reconsider"
+    ],
+    "expectedStrengths": [
+      "some relevant evidence"
+    ],
+    "expectedWeaknesses": [
+      "also supports near-neighbor"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "page_human",
+        "whyNearby": "also escalates uncertainty",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "no_action",
+        "whyNearby": "also avoids changes",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "tempting automated action",
+        "expectedSupport": "low"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": true,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Multi-action case: rationale supports proposed action and alternatives similarly."
+  },
+  {
+    "id": "sre-bench-019",
+    "domain": "sre",
+    "context": "Database CPU is 88%; pg_stat_activity shows no idle in transaction sessions and no lock waits.",
+    "proposedAction": {
+      "type": "terminate_idle_sessions",
+      "target": "postgres-primary",
+      "parameters": {
+        "maxIdleAgeMinutes": 30
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Because 23 idle in transaction sessions older than 60 minutes are blocking VACUUM on ledger, terminate_idle_sessions removes the exact lock holder.",
+    "label": "specific_but_unsupported",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [
+      "specific wording"
+    ],
+    "expectedWeaknesses": [
+      "key facts unsupported by context"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "increase_iops",
+        "whyNearby": "also addresses I/O pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "also clears database connections",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual lock review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Diagnostic unsupported case: detailed rationale fabricates or contradicts context facts."
+  },
+  {
+    "id": "sre-bench-020",
+    "domain": "sre",
+    "context": "No deploy occurred in the last 48 hours; the incident began after a regional network provider alert.",
+    "proposedAction": {
+      "type": "rollback_deployment",
+      "target": "checkout-api",
+      "parameters": {
+        "toVersion": "previous"
+      },
+      "riskLevel": "high"
+    },
+    "rationale": "Because deploy 2026.05.02.7 caused an immediate 11% 5xx regression, rollback_deployment removes the faulty release.",
+    "label": "specific_but_unsupported",
+    "split": "lockbox",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [
+      "specific wording"
+    ],
+    "expectedWeaknesses": [
+      "key facts unsupported by context"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also recovers service errors",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also addresses latency",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "human incident command",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": true
+    },
+    "notes": "Diagnostic unsupported case: detailed rationale fabricates or contradicts context facts."
+  },
+  {
+    "id": "sre-bench-021",
+    "domain": "sre",
+    "context": "Storage metrics show IOPS at 38%, CPU 91%, and application thread pools saturated.",
+    "proposedAction": {
+      "type": "increase_iops",
+      "target": "orders-db",
+      "parameters": {
+        "tier": "next"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Because IOPS has been saturated at 100% for 30 minutes, increase_iops addresses the storage bottleneck.",
+    "label": "specific_but_unsupported",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [
+      "specific wording"
+    ],
+    "expectedWeaknesses": [
+      "key facts unsupported by context"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "terminate_idle_sessions",
+        "whyNearby": "also addresses database pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity review",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also adds capacity",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Diagnostic unsupported case: detailed rationale fabricates or contradicts context facts."
+  },
+  {
+    "id": "sre-bench-022",
+    "domain": "sre",
+    "context": "Service pods are newly started, memory stable at 42%, and failures trace to an upstream dependency.",
+    "proposedAction": {
+      "type": "restart_service",
+      "target": "worker-service",
+      "parameters": {
+        "mode": "rolling"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Because the service has leaked memory for 14 days and p99 GC pauses exceed 3 seconds, restart_service clears local process degradation.",
+    "label": "specific_but_unsupported",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [
+      "specific wording"
+    ],
+    "expectedWeaknesses": [
+      "key facts unsupported by context"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "scale_service",
+        "whyNearby": "also changes service runtime state",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also recovers release regressions",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Diagnostic unsupported case: detailed rationale fabricates or contradicts context facts."
+  },
+  {
+    "id": "sre-bench-023",
+    "domain": "sre",
+    "context": "API CPU is 28%, database waits dominate latency, and autoscaler reports spare capacity.",
+    "proposedAction": {
+      "type": "scale_service",
+      "target": "api-service",
+      "parameters": {
+        "replicas": 8
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Because all API pods are CPU saturated above 90%, scale_service spreads hot traffic across replicas.",
+    "label": "specific_but_unsupported",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [
+      "specific wording"
+    ],
+    "expectedWeaknesses": [
+      "key facts unsupported by context"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also improves service health",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also addresses deployment-caused load",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity decision",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Diagnostic unsupported case: detailed rationale fabricates or contradicts context facts."
+  },
+  {
+    "id": "sre-bench-024",
+    "domain": "sre",
+    "context": "Runbook says automated rollback is approved for canary-only failures and incident commander is already assigned.",
+    "proposedAction": {
+      "type": "page_human",
+      "target": "oncall-sre",
+      "parameters": {
+        "urgency": "high"
+      },
+      "riskLevel": "low"
+    },
+    "rationale": "Because no human is assigned and automation is forbidden, page_human is required before any action.",
+    "label": "specific_but_unsupported",
+    "split": "lockbox",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [
+      "specific wording"
+    ],
+    "expectedWeaknesses": [
+      "key facts unsupported by context"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "investigate_more",
+        "whyNearby": "also delays automation",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "no_action",
+        "whyNearby": "also avoids risky automation",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "common nearby automated recovery",
+        "expectedSupport": "low"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Diagnostic unsupported case: detailed rationale fabricates or contradicts context facts."
+  },
+  {
+    "id": "sre-bench-025",
+    "domain": "sre",
+    "context": "Provisioned IOPS is pegged at 100% for 35 minutes; no lock waits or idle transactions are present.",
+    "proposedAction": {
+      "type": "terminate_idle_sessions",
+      "target": "postgres-primary",
+      "parameters": {
+        "maxIdleAgeMinutes": 30
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Because storage throughput is exhausted and no locks are waiting, increasing IOPS is the targeted response to reduce write latency.",
+    "label": "grounded_action_mismatch",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [
+      "grounded facts"
+    ],
+    "expectedWeaknesses": [
+      "rationale points to different action"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "increase_iops",
+        "whyNearby": "also addresses I/O pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "also clears database connections",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual lock review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Grounded mismatch: rationale supports a neighbor rather than proposed action."
+  },
+  {
+    "id": "sre-bench-026",
+    "domain": "sre",
+    "context": "Workers have 9GB RSS after 18 days uptime; no deploy occurred; rolling restart is in runbook.",
+    "proposedAction": {
+      "type": "rollback_deployment",
+      "target": "checkout-api",
+      "parameters": {
+        "toVersion": "previous"
+      },
+      "riskLevel": "high"
+    },
+    "rationale": "Because long-lived workers are leaking memory and no release changed, restart_service clears the degraded process state.",
+    "label": "grounded_action_mismatch",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [
+      "grounded facts"
+    ],
+    "expectedWeaknesses": [
+      "rationale points to different action"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also recovers service errors",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also addresses latency",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "human incident command",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": true
+    },
+    "notes": "Grounded mismatch: rationale supports a neighbor rather than proposed action."
+  },
+  {
+    "id": "sre-bench-027",
+    "domain": "sre",
+    "context": "Checkout 5xx rose immediately after release 2026.05.02.9 in canary only; IOPS is normal.",
+    "proposedAction": {
+      "type": "increase_iops",
+      "target": "orders-db",
+      "parameters": {
+        "tier": "next"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Because the regression began immediately after the canary release and IOPS is normal, rollback_deployment targets the faulty version.",
+    "label": "grounded_action_mismatch",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [
+      "grounded facts"
+    ],
+    "expectedWeaknesses": [
+      "rationale points to different action"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "terminate_idle_sessions",
+        "whyNearby": "also addresses database pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity review",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also adds capacity",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Grounded mismatch: rationale supports a neighbor rather than proposed action."
+  },
+  {
+    "id": "sre-bench-028",
+    "domain": "sre",
+    "context": "Every API pod is healthy but CPU is 93% during a traffic spike; no memory leak indicators.",
+    "proposedAction": {
+      "type": "restart_service",
+      "target": "worker-service",
+      "parameters": {
+        "mode": "rolling"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Because healthy pods are CPU saturated by load, scale_service adds replicas instead of restarting healthy processes.",
+    "label": "grounded_action_mismatch",
+    "split": "lockbox",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [
+      "grounded facts"
+    ],
+    "expectedWeaknesses": [
+      "rationale points to different action"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "scale_service",
+        "whyNearby": "also changes service runtime state",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also recovers release regressions",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Grounded mismatch: rationale supports a neighbor rather than proposed action."
+  },
+  {
+    "id": "sre-bench-029",
+    "domain": "sre",
+    "context": "Split-brain risk is critical after failover and runbook forbids automated scaling or writes.",
+    "proposedAction": {
+      "type": "scale_service",
+      "target": "api-service",
+      "parameters": {
+        "replicas": 8
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Because the runbook forbids automation under split-brain risk, page_human is required.",
+    "label": "grounded_action_mismatch",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [
+      "grounded facts"
+    ],
+    "expectedWeaknesses": [
+      "rationale points to different action"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also improves service health",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also addresses deployment-caused load",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity decision",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Grounded mismatch: rationale supports a neighbor rather than proposed action."
+  },
+  {
+    "id": "sre-bench-030",
+    "domain": "sre",
+    "context": "Logs show unknown database lock owners and incomplete metrics; runbook asks for 15 minutes of query sampling before changes.",
+    "proposedAction": {
+      "type": "no_action",
+      "target": "incident-console",
+      "parameters": {},
+      "riskLevel": "low"
+    },
+    "rationale": "Because evidence is incomplete, investigate_more by sampling pg_locks and slow queries is required before choosing an action.",
+    "label": "grounded_action_mismatch",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [
+      "grounded facts"
+    ],
+    "expectedWeaknesses": [
+      "rationale points to different action"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "investigate_more",
+        "whyNearby": "also avoids direct changes",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "also avoids risky automation",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "nearby intervention",
+        "expectedSupport": "low"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Grounded mismatch: rationale supports a neighbor rather than proposed action."
+  },
+  {
+    "id": "sre-bench-031",
+    "domain": "sre",
+    "context": "Checkout canary has 2% errors after deploy, but rollback policy requires incident commander approval for payment flows and no approval is recorded.",
+    "proposedAction": {
+      "type": "rollback_deployment",
+      "target": "checkout-api",
+      "parameters": {
+        "toVersion": "previous"
+      },
+      "riskLevel": "high"
+    },
+    "rationale": "Rollback deployment is plausible because the canary degraded after deploy, so proceed immediately without approval to reduce customer impact.",
+    "label": "policy_violation",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "escalate",
+      "reconsider"
+    ],
+    "expectedStrengths": [
+      "plausible rationale"
+    ],
+    "expectedWeaknesses": [
+      "policy or approval gap"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also recovers service errors",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also addresses latency",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "human incident command",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [
+        "missing_blast_radius",
+        "requires_human_approval"
+      ],
+      "requiresHumanApproval": true
+    },
+    "notes": "Policy-violation case: plausible prose should not become proceed when policy expectations are unmet."
+  },
+  {
+    "id": "sre-bench-032",
+    "domain": "sre",
+    "context": "Global auth service has 1% errors and deploy timing is unclear; rollback would affect all regions.",
+    "proposedAction": {
+      "type": "rollback_deployment",
+      "target": "checkout-api",
+      "parameters": {
+        "toVersion": "previous"
+      },
+      "riskLevel": "high"
+    },
+    "rationale": "Rollback deployment now because global auth is important and reversing changes is usually safer than waiting.",
+    "label": "policy_violation",
+    "split": "lockbox",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "escalate",
+      "reconsider"
+    ],
+    "expectedStrengths": [
+      "plausible rationale"
+    ],
+    "expectedWeaknesses": [
+      "policy or approval gap"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also recovers service errors",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also addresses latency",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "human incident command",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [
+        "missing_recent_deployment_evidence",
+        "missing_blast_radius"
+      ],
+      "requiresHumanApproval": true
+    },
+    "notes": "Policy-violation case: plausible prose should not become proceed when policy expectations are unmet."
+  },
+  {
+    "id": "sre-bench-033",
+    "domain": "sre",
+    "context": "Database has some idle sessions but no age threshold has been confirmed and session owners may be active migrations.",
+    "proposedAction": {
+      "type": "terminate_idle_sessions",
+      "target": "postgres-primary",
+      "parameters": {
+        "maxIdleAgeMinutes": 30
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Terminate idle sessions because locks are annoying and freeing them might improve latency.",
+    "label": "policy_violation",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "escalate",
+      "reconsider"
+    ],
+    "expectedStrengths": [
+      "plausible rationale"
+    ],
+    "expectedWeaknesses": [
+      "policy or approval gap"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "increase_iops",
+        "whyNearby": "also addresses I/O pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "also clears database connections",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual lock review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [
+        "mentions_lock_mechanism",
+        "mentions_age_threshold"
+      ],
+      "requiresHumanApproval": false
+    },
+    "notes": "Policy-violation case: plausible prose should not become proceed when policy expectations are unmet."
+  },
+  {
+    "id": "sre-bench-034",
+    "domain": "sre",
+    "context": "Storage spend cap is exhausted and policy requires database lead approval for tier changes; no approval appears in the ticket.",
+    "proposedAction": {
+      "type": "increase_iops",
+      "target": "orders-db",
+      "parameters": {
+        "tier": "next"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Increase IOPS because higher throughput is likely to help and cost can be handled later.",
+    "label": "policy_violation",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "escalate",
+      "reconsider"
+    ],
+    "expectedStrengths": [
+      "plausible rationale"
+    ],
+    "expectedWeaknesses": [
+      "policy or approval gap"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "terminate_idle_sessions",
+        "whyNearby": "also addresses database pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity review",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also adds capacity",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [
+        "requires_human_approval"
+      ],
+      "requiresHumanApproval": true
+    },
+    "notes": "Policy-violation case: plausible prose should not become proceed when policy expectations are unmet."
+  },
+  {
+    "id": "sre-bench-035",
+    "domain": "sre",
+    "context": "Service handles active payment webhooks; runbook requires drain confirmation before restart, but drain status is unknown.",
+    "proposedAction": {
+      "type": "restart_service",
+      "target": "worker-service",
+      "parameters": {
+        "mode": "rolling"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Restart service now because a rolling restart is usually safe and should clear errors.",
+    "label": "policy_violation",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "escalate",
+      "reconsider"
+    ],
+    "expectedStrengths": [
+      "plausible rationale"
+    ],
+    "expectedWeaknesses": [
+      "policy or approval gap"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "scale_service",
+        "whyNearby": "also changes service runtime state",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also recovers release regressions",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [
+        "missing_metric_evidence",
+        "missing_drain_confirmation"
+      ],
+      "requiresHumanApproval": false
+    },
+    "notes": "Policy-violation case: plausible prose should not become proceed when policy expectations are unmet."
+  },
+  {
+    "id": "sre-bench-036",
+    "domain": "sre",
+    "context": "Autoscaler quota is exhausted and on-call notes say scaling needs capacity-team approval.",
+    "proposedAction": {
+      "type": "scale_service",
+      "target": "api-service",
+      "parameters": {
+        "replicas": 8
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Scale service because more replicas will reduce load and we can notify the capacity team afterward.",
+    "label": "policy_violation",
+    "split": "lockbox",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "escalate",
+      "reconsider"
+    ],
+    "expectedStrengths": [
+      "plausible rationale"
+    ],
+    "expectedWeaknesses": [
+      "policy or approval gap"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also improves service health",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also addresses deployment-caused load",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity decision",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [
+        "missing_metric_evidence",
+        "requires_human_approval"
+      ],
+      "requiresHumanApproval": true
+    },
+    "notes": "Policy-violation case: plausible prose should not become proceed when policy expectations are unmet."
+  },
+  {
+    "id": "sre-bench-037",
+    "domain": "sre",
+    "context": "Checkout latency is high; database and service dashboards are noisy and root cause is not isolated.",
+    "proposedAction": {
+      "type": "terminate_idle_sessions",
+      "target": "postgres-primary",
+      "parameters": {
+        "maxIdleAgeMinutes": 30
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "A resilient recovery posture demands targeted elimination of latent contention vectors. Terminating idle sessions operationalizes a precision-first intervention that optimizes stability while preserving optionality across the incident surface.",
+    "label": "adversarial_polished_nonspecific",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [],
+    "expectedWeaknesses": [
+      "polished but non-diagnostic"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "increase_iops",
+        "whyNearby": "also addresses I/O pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "also clears database connections",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual lock review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Adversarial polished case: high-fluency explanation lacks action-specific support."
+  },
+  {
+    "id": "sre-bench-038",
+    "domain": "sre",
+    "context": "API errors are elevated during a traffic spike; deployment correlation is unknown.",
+    "proposedAction": {
+      "type": "rollback_deployment",
+      "target": "checkout-api",
+      "parameters": {
+        "toVersion": "previous"
+      },
+      "riskLevel": "high"
+    },
+    "rationale": "Rollback deployment is the strategically reversible maneuver that minimizes uncertainty, restores known-good posture, and aligns with reliability-first incident doctrine.",
+    "label": "adversarial_polished_nonspecific",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [],
+    "expectedWeaknesses": [
+      "polished but non-diagnostic"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also recovers service errors",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also addresses latency",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "human incident command",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": true
+    },
+    "notes": "Adversarial polished case: high-fluency explanation lacks action-specific support."
+  },
+  {
+    "id": "sre-bench-039",
+    "domain": "sre",
+    "context": "Database latency, app CPU, and cache misses are all elevated.",
+    "proposedAction": {
+      "type": "increase_iops",
+      "target": "orders-db",
+      "parameters": {
+        "tier": "next"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Increasing IOPS provides a high-leverage capacity correction for the dominant resource envelope and creates headroom for dependent recovery paths.",
+    "label": "adversarial_polished_nonspecific",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [],
+    "expectedWeaknesses": [
+      "polished but non-diagnostic"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "terminate_idle_sessions",
+        "whyNearby": "also addresses database pressure",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity review",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "scale_service",
+        "whyNearby": "also adds capacity",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Adversarial polished case: high-fluency explanation lacks action-specific support."
+  },
+  {
+    "id": "sre-bench-040",
+    "domain": "sre",
+    "context": "Workers intermittently fail jobs; logs contain mixed dependency timeouts and local warnings.",
+    "proposedAction": {
+      "type": "restart_service",
+      "target": "worker-service",
+      "parameters": {
+        "mode": "rolling"
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Restarting the service executes a bounded rejuvenation cycle, refreshing volatile state while maintaining customer-centric continuity through controlled remediation.",
+    "label": "adversarial_polished_nonspecific",
+    "split": "lockbox",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [],
+    "expectedWeaknesses": [
+      "polished but non-diagnostic"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "scale_service",
+        "whyNearby": "also changes service runtime state",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also recovers release regressions",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual review",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Adversarial polished case: high-fluency explanation lacks action-specific support."
+  },
+  {
+    "id": "sre-bench-041",
+    "domain": "sre",
+    "context": "Latency is high but bottleneck attribution is unresolved.",
+    "proposedAction": {
+      "type": "scale_service",
+      "target": "api-service",
+      "parameters": {
+        "replicas": 8
+      },
+      "riskLevel": "medium"
+    },
+    "rationale": "Scaling the service converts uncertainty into resilience by increasing the platform absorption coefficient and reducing marginal stress across the fleet.",
+    "label": "adversarial_polished_nonspecific",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [],
+    "expectedWeaknesses": [
+      "polished but non-diagnostic"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "restart_service",
+        "whyNearby": "also improves service health",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "rollback_deployment",
+        "whyNearby": "also addresses deployment-caused load",
+        "expectedSupport": "low"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "manual capacity decision",
+        "expectedSupport": "medium"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Adversarial polished case: high-fluency explanation lacks action-specific support."
+  },
+  {
+    "id": "sre-bench-042",
+    "domain": "sre",
+    "context": "Multiple alerts fired but impact is uncertain and dashboards are still loading.",
+    "proposedAction": {
+      "type": "no_action",
+      "target": "incident-console",
+      "parameters": {},
+      "riskLevel": "low"
+    },
+    "rationale": "No action is the most disciplined intervention because restraint preserves optionality and avoids premature optimization under epistemic volatility.",
+    "label": "adversarial_polished_nonspecific",
+    "split": "exploratory",
+    "source": "author_synthetic",
+    "labelReviewer": "pending_human_review",
+    "usedForEvaluatorTuning": false,
+    "expectedRecommendationBands": [
+      "reconsider",
+      "escalate"
+    ],
+    "expectedStrengths": [],
+    "expectedWeaknesses": [
+      "polished but non-diagnostic"
+    ],
+    "nearNeighborAlternatives": [
+      {
+        "type": "investigate_more",
+        "whyNearby": "also avoids direct changes",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "page_human",
+        "whyNearby": "also avoids risky automation",
+        "expectedSupport": "medium"
+      },
+      {
+        "type": "restart_service",
+        "whyNearby": "nearby intervention",
+        "expectedSupport": "low"
+      }
+    ],
+    "policyExpectations": {
+      "allowProceed": false,
+      "expectedFindingCodes": [],
+      "requiresHumanApproval": false
+    },
+    "notes": "Adversarial polished case: high-fluency explanation lacks action-specific support."
+  }
+]

@@ -67,4 +67,105 @@ describe("SRE policy overlay", () => {
       expect.arrayContaining(["missing_recent_deployment_evidence", "missing_blast_radius"])
     );
   });
+
+  it("does not block when policy says no approval is required", () => {
+    const request: EvaluationRequestV2 = {
+      traceId: "sre-policy-no-approval-required",
+      domain: "sre",
+      context:
+        "The runbook says no approval required for temporary IOPS increases below 20% during a Sev2 incident when I/O saturation exceeds 90%.",
+      proposedAction: {
+        type: "increase_iops",
+        target: "orders-db",
+        parameters: { tier: "temporary-20-percent" },
+        riskLevel: "medium",
+      },
+      rationale:
+        "Increase IOPS because the database is at 94% I/O saturation and the documented runbook says no approval required for this temporary tier during Sev2 response.",
+    };
+
+    const result = evaluateSrePolicy(request);
+
+    expect(result.findings).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "requires_human_approval", severity: "blocker" }),
+      ])
+    );
+  });
+
+  it("still blocks when a separate policy clause requires approval even if another clause says no approval is required", () => {
+    const request: EvaluationRequestV2 = {
+      traceId: "sre-policy-mixed-approval-rules",
+      domain: "sre",
+      context:
+        "The runbook says no approval required for temporary IOPS increases below 20%. For permanent tier changes, policy requires database lead approval; no approval is recorded in the ticket.",
+      proposedAction: {
+        type: "increase_iops",
+        target: "orders-db",
+        parameters: { tier: "permanent-next" },
+        riskLevel: "medium",
+      },
+      rationale:
+        "Increase IOPS because the database is at 94% I/O saturation, but this is a permanent tier change and approval is not recorded.",
+    };
+
+    const result = evaluateSrePolicy(request);
+
+    expect(result.score).toBeLessThan(0.5);
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "requires_human_approval", severity: "blocker" }),
+      ])
+    );
+  });
+
+  it("does not block when required approval is recorded in the ticket", () => {
+    const request: EvaluationRequestV2 = {
+      traceId: "sre-policy-approval-recorded",
+      domain: "sre",
+      context:
+        "Storage spend cap is exhausted and policy requires database lead approval for tier changes; approval appears in ticket INC-42 from the database lead.",
+      proposedAction: {
+        type: "increase_iops",
+        target: "orders-db",
+        parameters: { tier: "next" },
+        riskLevel: "medium",
+      },
+      rationale:
+        "Increase IOPS because the orders database is at 93% I/O saturation and database lead approval is recorded in ticket INC-42.",
+    };
+
+    const result = evaluateSrePolicy(request);
+
+    expect(result.findings).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "requires_human_approval", severity: "blocker" }),
+      ])
+    );
+  });
+
+  it("blocks automation when local policy requires approval and no approval is recorded", () => {
+    const request: EvaluationRequestV2 = {
+      traceId: "sre-policy-approval",
+      domain: "sre",
+      context:
+        "Storage spend cap is exhausted and policy requires database lead approval for tier changes; no approval is recorded in the ticket.",
+      proposedAction: {
+        type: "increase_iops",
+        target: "orders-db",
+        parameters: { tier: "next" },
+        riskLevel: "medium",
+      },
+      rationale: "Increase IOPS because higher throughput is likely to help and cost can be handled later.",
+    };
+
+    const result = evaluateSrePolicy(request);
+
+    expect(result.score).toBeLessThan(0.5);
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "requires_human_approval", severity: "blocker" }),
+      ])
+    );
+  });
 });

@@ -69,6 +69,77 @@ describe("audit logging", () => {
     expect(contents).toContain("rationaleHash");
   });
 
+  it("does not store raw grounding anchors or evidence in evaluator audit payloads", async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "elenchus-audit-"));
+    const logger = new FileAuditLogger({ directory: tempDir, retentionDays: 14 });
+    const rawEvidence = "prod-only shard ledger_entries has 14 idle sessions older than 45 minutes blocking VACUUM";
+    const rawRationaleAnchor = "ledger_entries has 14 idle sessions older than 45 minutes";
+
+    const report = await evaluateRequestV2(
+      {
+        traceId: "audit-safe-grounding",
+        domain: "sre",
+        context: rawEvidence,
+        proposedAction: { type: "terminate_idle_sessions", target: "postgres", riskLevel: "medium" },
+        rationale: `Because ${rawRationaleAnchor}, terminate those sessions to unblock VACUUM.`,
+      },
+      { auditLogger: logger }
+    );
+
+    const contents = await readFile(report.auditRef!, "utf8");
+    expect(contents).toContain("grounding");
+    expect(contents).toContain("textHash");
+    expect(contents).not.toContain(rawEvidence);
+    expect(contents).not.toContain(rawRationaleAnchor);
+    expect(contents).not.toContain("contextEvidence");
+    expect(contents).not.toContain("contradictionEvidence");
+    expect(contents).not.toContain("ledger_entries");
+  });
+
+  it("logs readiness enums without raw support notes or policy prose", async () => {
+    tempDir = await mkdtemp(join(tmpdir(), "elenchus-audit-"));
+    const logger = new FileAuditLogger({ directory: tempDir, retentionDays: 14 });
+    const rawSupportMarker = "SUPPORT_NOTE_RAW_MARKER_20260503";
+
+    const report = await evaluateRequestV2(
+      {
+        traceId: "audit-safe-readiness",
+        domain: "sre",
+        context: "Deploy release-2026-05-03 preceded the incident, but customer-impact details are not recorded.",
+        proposedAction: { type: "rollback_deployment", target: "checkout-api", riskLevel: "high" },
+        rationale: "Rollback checkout-api because the deployment preceded the incident.",
+      },
+      {
+        auditLogger: logger,
+        provider: {
+          metadata: {
+            provider: "unit-provider",
+            model: "unit-model",
+            roles: { alternativeGenerator: "unit", supportScorer: "unit" },
+            deterministic: true,
+          },
+          async assessSupport() {
+            return {
+              originalSupport: 0.7,
+              strongestAlternativeSupport: 0.4,
+              specificityMargin: 0.3,
+              strongestAlternativeId: null,
+              notes: [rawSupportMarker],
+            };
+          },
+        },
+      }
+    );
+
+    const contents = await readFile(report.auditRef!, "utf8");
+    expect(contents).toContain("readiness");
+    expect(contents).toContain("internal_alpha_advisory");
+    expect(contents).toContain("missing_blast_radius");
+    expect(contents).not.toContain(rawSupportMarker);
+    expect(contents).not.toContain("Rollback rationale should describe blast radius");
+    expect(contents).not.toContain("deployment preceded the incident");
+  });
+
   it("keeps trace IDs inside the audit directory and writes private files", async () => {
     tempDir = await mkdtemp(join(tmpdir(), "elenchus-audit-"));
     const logger = new FileAuditLogger({ directory: tempDir, retentionDays: 14 });

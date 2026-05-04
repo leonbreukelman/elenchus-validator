@@ -119,7 +119,63 @@ describe("/api/v2/evaluate", () => {
     expect(body.status).toBe("complete");
     expect(body.overallSignal).toEqual(expect.any(Number));
     expect(body.calibration).toBe("uncalibrated_internal_alpha");
+    expect(body.subscores.contextGrounding).toEqual(expect.any(Number));
+    expect(body.grounding.score).toBe(body.subscores.contextGrounding);
+    expect(body.grounding.summary.loadBearing).toBeGreaterThan(0);
+    expect(body.productSemantics).toContain("deterministic context-grounding proxy");
+    expect(body.readiness).toMatchObject({
+      operatingMode: "internal_alpha_advisory",
+      productionDecisionUse: "not_validated_for_allow_deny",
+      operatorReviewRequired: true,
+      evaluatorVersion: expect.any(String),
+      evaluatorFingerprint: expect.any(String),
+    });
+    expect(body.readiness.blockedUses).toEqual(
+      expect.arrayContaining(["production_allow_deny", "machine_actionable_consumption", "hidden_chain_of_thought_faithfulness"])
+    );
     expect(body).not.toHaveProperty("score");
+  });
+
+  it("preserves successful legacy v1 validation response shape without v2 grounding fields", async () => {
+    const token = "legacy-v1-test-bearer";
+    const originalGeminiKey = process.env.GEMINI_API_KEY;
+    const originalApiKey = process.env.API_KEY;
+    process.env.ELENCHUS_API_TOKEN = token;
+    delete process.env.GEMINI_API_KEY;
+    delete process.env.API_KEY;
+
+    try {
+      const response = await request("/api/v1/intercept", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          traceId: "legacy-v1-shape",
+          context: "Synthetic SRE context for legacy shape test.",
+          proposedAction: { type: "no_action", target: "legacy-service" },
+          reasoning: "The context is only exercising the legacy response envelope.",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body).toEqual({
+        score: expect.any(Number),
+        terminalLog: expect.any(Array),
+      });
+      expect(body).not.toHaveProperty("grounding");
+      expect(body).not.toHaveProperty("subscores");
+      expect(body).not.toHaveProperty("overallSignal");
+      expect(body).not.toHaveProperty("contextGrounding");
+      expect(body).not.toHaveProperty("readiness");
+    } finally {
+      if (originalGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = originalGeminiKey;
+      if (originalApiKey === undefined) delete process.env.API_KEY;
+      else process.env.API_KEY = originalApiKey;
+    }
   });
 
   it("requires bearer auth for the legacy v1 cost-incurring endpoint when configured", async () => {
@@ -146,6 +202,10 @@ describe("/api/v2/evaluate", () => {
     expect(await response.json()).toMatchObject({
       status: "error",
       overallSignal: null,
+      subscores: null,
+      support: null,
+      grounding: null,
+      confidence: null,
     });
   });
 });
