@@ -163,16 +163,55 @@ Start the service:
 npm run dev
 ```
 
+## Hermes Action-Review Sidecar
+
+The sidecar is a local CLI wrapper for Hermes-style agent workflows. It reviews a proposed action, bounded context, and public rationale, then prints a terminal review card and writes sanitized artifacts under `sidecar-output/`.
+
+It is review-only. It does not perform the action, mutate Hermes config, send messages, share files, run browser submissions, change repos, or write durable memory. Every result keeps:
+
+- `humanReviewRequired: true`
+- `canAutonomouslyExecute: false`
+- `productionDecisionUse: not_validated_for_allow_deny`
+
+Run the multi-case local demo:
+
+```bash
+npm run demo:sidecar
+```
+
+Review a single fixture:
+
+```bash
+npm run review:action -- examples/sidecar/share-file-edit-mismatch.json
+```
+
+The CLI writes `report.json` and `card.txt`. By default those artifacts use a frozen sanitized schema: action type, risk level, hashes, sanitized parameter keys, advisory finding codes, numeric internal-alpha signals, and readiness metadata. They do not persist raw context, raw rationale, raw target, raw parameter values, raw recipients, raw anchor text, or raw evidence excerpts.
+
+Advisory exit codes are convenience signals for shell demos, not permission for an agent to act:
+
+- `0`: ready for operator review
+- `2`: revise or gather more context
+- `3`: escalate to operator
+- `4`: evaluation error
+- `1`: malformed input or runtime failure
+
+Known generic-domain limitation: the deterministic grounding and support stack was originally built around SRE evidence patterns. Generic Hermes actions therefore carry `generic_domain_signal_unreliable`, and a generic-domain `proceed` recommendation is capped in the sidecar summary to `proceed_with_caveats`.
+
+Future integration can call this CLI from a Hermes pre-tool hook for selected high-risk tool classes, but the MVP intentionally stays local and side-effect-free.
+
 Useful environment variables:
 
 - `ELENCHUS_API_TOKEN`: bearer token for `/api/v2/evaluate`, `/api/v1/intercept`, and MCP endpoints; required in production unless explicitly disabled with `ELENCHUS_ALLOW_UNAUTHENTICATED=true`
 - `ELENCHUS_BODY_LIMIT`: JSON body size limit, default `256kb`
 - `ELENCHUS_AUDIT_DIR`: file-backed audit directory, default `.elenchus-audit`
 - `ELENCHUS_AUDIT_RETENTION_DAYS`: retention metadata default, default `14`
-- `ELENCHUS_USE_GEMINI_V2=true`: opt into Gemini support scoring for v2
-- `GEMINI_API_KEY` or `API_KEY`: provider credential when Gemini is enabled, and for legacy v1
+- `ELENCHUS_LLM_PROVIDER`: optional v2 support scorer (`deterministic`, `claude`, `grok`, or `gemini`); when unset, v2 auto-selects the first configured provider key in that order and otherwise falls back to deterministic local scoring
+- `ELENCHUS_PREFERRED_MODEL`: optional model override; model family must match the selected provider when both are supplied
+- `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL`: Claude provider credential and optional model
+- `XAI_API_KEY` / `XAI_MODEL`: Grok provider credential and optional model
+- `GEMINI_API_KEY` or `API_KEY` / `GEMINI_MODEL`: Gemini provider credential and optional model; `API_KEY` is also used by legacy v1
 
-Without provider credentials, v2 uses deterministic local evaluation and test doubles.
+Without provider credentials or an explicit provider override, v2 uses deterministic local evaluation. Invalid provider configuration returns a structured v2 error report with no numeric signal.
 
 ## Seed Benchmark
 

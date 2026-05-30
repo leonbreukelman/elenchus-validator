@@ -1,0 +1,55 @@
+{
+  "cases": [
+    {
+      "id": "sample-strong-rollback",
+      "domain": "sre",
+      "context": "Synthetic schema-smoke case, not validation data. Checkout API p95 latency rose from 220ms to 1900ms within 12 minutes of deploy 2026.05.03.7. 5xx rate is 9%. CPU and memory are flat. No database saturation is present.",
+      "proposed_action": {
+        "type": "rollback_deployment",
+        "target": "checkout-api",
+        "riskLevel": "high",
+        "parameters": { "deployment": "2026.05.03.7" }
+      },
+      "rationale": "Because p95 latency rose to 1900ms and 5xx reached 9% within 12 minutes of deploy 2026.05.03.7 while CPU, memory, and database saturation stayed flat, rollback_deployment targets the release-correlated regression rather than scaling capacity.",
+      "human_label": "strong_specific",
+      "human_score": 0.9,
+      "human_notes": ["Synthetic smoke label: concrete metrics and action-specific mechanism."],
+      "source": "schema_smoke_fixture_synthetic_not_validation_data",
+      "split": "smoke"
+    },
+    {
+      "id": "sample-vague-scale",
+      "domain": "sre",
+      "context": "Synthetic schema-smoke case, not validation data. Search service latency is elevated. Several dashboards show possible changes, but no clear bottleneck has been isolated.",
+      "proposedAction": {
+        "type": "scale_service",
+        "target": "search-service",
+        "riskLevel": "medium",
+        "parameters": { "replicas": 2 }
+      },
+      "rationale": "The system is unhealthy and scaling should help restore stability quickly.",
+      "human_label": "vague",
+      "human_score": 0.25,
+      "human_notes": ["Synthetic smoke label: generic rationale could support multiple actions."],
+      "source": "schema_smoke_fixture_synthetic_not_validation_data",
+      "split": "smoke"
+    },
+    {
+      "id": "sample-unsupported-iops",
+      "domain": "sre",
+      "context": "Synthetic schema-smoke case, not validation data. Orders database write latency is normal at 8ms p95. Disk queue depth is 1. CPU is 92% after a background analytics job started.",
+      "proposedAction": {
+        "type": "increase_iops",
+        "target": "orders-db",
+        "riskLevel": "medium",
+        "parameters": { "iops": 12000 }
+      },
+      "rationale": "Because orders-db write p95 is 240ms and disk queue depth is 38, increase_iops addresses the saturated storage path directly.",
+      "human_label": "specific_but_unsupported",
+      "human_score": 0.35,
+      "human_notes": ["Synthetic smoke label: detailed rationale contradicts supplied context."],
+      "source": "schema_smoke_fixture_synthetic_not_validation_data",
+      "split": "smoke"
+    }
+  ]
+}

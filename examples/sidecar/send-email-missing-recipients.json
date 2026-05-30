@@ -1,0 +1,21 @@
+{
+  "traceId": "demo-send-email-missing-recipients",
+  "context": [
+    {
+      "label": "thread_summary",
+      "text": "Synthetic thread summary says someone asked for a status update, but the intended recipient is not identified."
+    }
+  ],
+  "proposedAction": {
+    "type": "send_email",
+    "parameters": {
+      "subject": "Synthetic status update"
+    },
+    "expectedEffect": "Send a status update message.",
+    "riskLevel": "medium"
+  },
+  "rationale": "Because a status update was requested, the agent should send an email response now.",
+  "metadata": {
+    "fixture": "send-email-missing-recipients"
+  }
+}

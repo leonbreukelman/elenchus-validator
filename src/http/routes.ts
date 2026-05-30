@@ -3,7 +3,7 @@ import express from "express";
 import { FileAuditLogger } from "../evaluation/audit.js";
 import { evaluateRequestV2 } from "../evaluation/evaluator.js";
 import { buildErrorReport } from "../evaluation/report.js";
-import { getDefaultProvider } from "../evaluation/providers.js";
+import { getDefaultProvider, type EvaluationProvider } from "../evaluation/providers.js";
 import { requireBearerToken } from "./auth.js";
 import { parseEvaluationRequestV2 } from "./validation.js";
 
@@ -29,8 +29,16 @@ export function createApiRouter(): Router {
       if (!res.writableEnded) controller.abort();
     });
 
+    let provider: EvaluationProvider;
+    try {
+      provider = getDefaultProvider();
+    } catch {
+      res.status(502).json(buildErrorReport(parsed.value, "provider configuration error"));
+      return;
+    }
+
     const report = await evaluateRequestV2(parsed.value, {
-      provider: getDefaultProvider(),
+      provider,
       auditLogger: new FileAuditLogger(),
       signal: controller.signal,
     });

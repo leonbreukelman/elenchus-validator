@@ -4,6 +4,7 @@ dist/
 coverage/
 .elenchus-audit/
 benchmark-output/
+sidecar-output/
 .DS_Store
 *.log
 .env*

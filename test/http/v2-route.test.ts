@@ -4,9 +4,22 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../../server.js";
 
 afterEach(async () => {
-  delete process.env.ELENCHUS_API_TOKEN;
-  delete process.env.NODE_ENV;
-  delete process.env.ELENCHUS_ALLOW_UNAUTHENTICATED;
+  for (const key of [
+    "ELENCHUS_API_TOKEN",
+    "NODE_ENV",
+    "ELENCHUS_ALLOW_UNAUTHENTICATED",
+    "ELENCHUS_LLM_PROVIDER",
+    "ELENCHUS_PREFERRED_MODEL",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_MODEL",
+    "XAI_API_KEY",
+    "XAI_MODEL",
+    "GEMINI_API_KEY",
+    "GEMINI_MODEL",
+    "API_KEY",
+  ]) {
+    delete process.env[key];
+  }
 });
 
 async function request(path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) {
@@ -92,6 +105,7 @@ describe("/api/v2/evaluate", () => {
 
   it("returns status-safe v2 reports for valid SRE evaluations", async () => {
     process.env.ELENCHUS_API_TOKEN = "local-test-token";
+    process.env.ELENCHUS_LLM_PROVIDER = "deterministic";
 
     const response = await request("/api/v2/evaluate", {
       method: "POST",
@@ -134,6 +148,77 @@ describe("/api/v2/evaluate", () => {
       expect.arrayContaining(["production_allow_deny", "machine_actionable_consumption", "hidden_chain_of_thought_faithfulness"])
     );
     expect(body).not.toHaveProperty("score");
+  });
+
+  it("returns a status-safe error report when provider configuration is invalid", async () => {
+    const bearer = "local-" + "test-token";
+    const fakeProviderCredential = (prefix: string) => `${prefix}-` + "test-value";
+    const invalidProviderCases: Array<{ name: string; env: Record<string, string>; forbidden: string }> = [
+      {
+        name: "unsupported provider selector",
+        env: { ELENCHUS_LLM_PROVIDER: "unsupported-raw-provider-marker" },
+        forbidden: "unsupported-raw-provider-marker",
+      },
+      {
+        name: "missing required provider credential",
+        env: { ELENCHUS_LLM_PROVIDER: "claude" },
+        forbidden: "ANTHROPIC_API_KEY",
+      },
+      {
+        name: "conflicting provider and model family",
+        env: {
+          ELENCHUS_LLM_PROVIDER: "claude",
+          ELENCHUS_PREFERRED_MODEL: "grok-3",
+          ANTHROPIC_API_KEY: fakeProviderCredential("anthropic"),
+          XAI_API_KEY: fakeProviderCredential("xai"),
+        },
+        forbidden: "grok-3",
+      },
+    ];
+
+    for (const invalidProviderCase of invalidProviderCases) {
+      for (const key of ["ELENCHUS_LLM_PROVIDER", "ELENCHUS_PREFERRED_MODEL", "ANTHROPIC_API_KEY", "XAI_API_KEY"]) {
+        delete process.env[key];
+      }
+      process.env.ELENCHUS_API_TOKEN = bearer;
+      Object.assign(process.env, invalidProviderCase.env);
+
+      const response = await request("/api/v2/evaluate", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${bearer}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          traceId: `route-v2-provider-misconfig-${invalidProviderCase.name.replace(/\W+/g, "-")}`,
+          domain: "sre",
+          context: "Synthetic SRE context for provider configuration error handling.",
+          proposedAction: { type: "restart_service", target: "synthetic-service", riskLevel: "medium" },
+          rationale: "Because the synthetic service is unhealthy, restarting it is proposed.",
+        }),
+      });
+
+      expect(response.status).toBe(502);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        traceId: `route-v2-provider-misconfig-${invalidProviderCase.name.replace(/\W+/g, "-")}`,
+        status: "error",
+        recommendation: "abort_signal_only",
+        calibration: "uncalibrated_internal_alpha",
+        overallSignal: null,
+        subscores: null,
+        support: null,
+        grounding: null,
+        confidence: null,
+        errors: ["provider configuration error"],
+        readiness: {
+          operatorReviewRequired: true,
+          productionDecisionUse: "not_validated_for_allow_deny",
+          advisorySummary: "error_no_numeric_signal",
+        },
+      });
+      expect(JSON.stringify(body)).not.toContain(invalidProviderCase.forbidden);
+    }
   });
 
   it("preserves successful legacy v1 validation response shape without v2 grounding fields", async () => {

@@ -1,0 +1,31 @@
+{
+  "traceId": "demo-grounded-code-action",
+  "context": [
+    {
+      "label": "user_request",
+      "text": "Synthetic user asks to fix a failing route test before changing broader behavior."
+    },
+    {
+      "label": "test_output",
+      "text": "Vitest reports test/http/v2-route.test.ts expects confidence to be null for malformed v2 requests."
+    },
+    {
+      "label": "repo_context",
+      "text": "The route handler delegates malformed request responses to buildErrorReport in src/evaluation/report.ts."
+    }
+  ],
+  "proposedAction": {
+    "type": "code_edit",
+    "target": "src/evaluation/report.ts",
+    "parameters": {
+      "file": "src/evaluation/report.ts",
+      "changeType": "narrow_nullability_fix"
+    },
+    "expectedEffect": "Return null confidence for malformed v2 request reports while preserving existing route behavior.",
+    "riskLevel": "medium"
+  },
+  "rationale": "Because test/http/v2-route.test.ts explicitly expects null confidence for malformed v2 requests and malformed responses flow through buildErrorReport in src/evaluation/report.ts, a narrow code_edit to the error-report builder targets the failing behavior before broader refactoring.",
+  "metadata": {
+    "fixture": "grounded-code-action"
+  }
+}
